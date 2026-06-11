@@ -1,0 +1,88 @@
+name: QA Orchestrator Pipeline
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+
+jobs:
+  qa-run:
+    name: QA Automated Run
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: qauser
+          POSTGRES_PASSWORD: qapass
+          POSTGRES_DB: qa_orchestrator
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run DB migrations
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://qauser:qapass@localhost:5432/qa_orchestrator
+
+      - name: Run QA Suite
+        run: npm test -- --project=functional --project=api
+        env:
+          APP_ENV: homologacao
+          BASE_URL: ${{ secrets.QA_BASE_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DATABASE_URL: postgresql://qauser:qapass@localhost:5432/qa_orchestrator
+          REDIS_URL: redis://localhost:6379
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT_HASH: ${{ github.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qa-evidence-${{ github.run_number }}
+          path: |
+            allure-results/
+            evidence/
+            reports/
+          retention-days: 30
+
+      - name: Generate Allure Report
+        if: always()
+        run: npx allure generate allure-results -o allure-report --clean
+
+      - name: Deploy Allure Report
+        uses: peaceiris/actions-gh-pages@v4
+        if: always()
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: allure-report

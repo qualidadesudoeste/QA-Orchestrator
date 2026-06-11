@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build
+dist/
+build/
+
+# Environment — NEVER commit real credentials
+.env
+.env.local
+.env.*.local
+
+# Test outputs
+allure-results/
+allure-report/
+evidence/screenshots/
+evidence/videos/
+evidence/logs/
+evidence/traces/
+reports/*.json
+reports/*.html
+playwright-report/
+test-results/
+
+# Prisma
+prisma/migrations/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+*.pem
+*.key
+*.cert
+secrets/
+vault-token

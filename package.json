@@ -1,0 +1,54 @@
+{
+  "name": "qa-orchestrator",
+  "version": "1.0.0",
+  "description": "Autonomous Enterprise QA Agent powered by Claude + Playwright MCP",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "start": "node dist/index.ts",
+    "test": "playwright test",
+    "test:functional": "playwright test tests/functional",
+    "test:api": "playwright test tests/api",
+    "test:security": "playwright test tests/security",
+    "test:regression": "playwright test tests/regression",
+    "test:integration": "playwright test tests/integration",
+    "report": "allure generate allure-results --clean -o allure-report && allure open",
+    "db:migrate": "prisma migrate deploy",
+    "db:studio": "prisma studio",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.0",
+    "@faker-js/faker": "^9.0.0",
+    "@langchain/anthropic": "^0.3.0",
+    "@langchain/langgraph": "^0.2.0",
+    "@octokit/rest": "^21.0.0",
+    "@playwright/test": "^1.48.0",
+    "@prisma/client": "^5.21.0",
+    "allure-playwright": "^3.0.0",
+    "dotenv": "^16.4.0",
+    "ioredis": "^5.4.0",
+    "knex": "^3.1.0",
+    "pg": "^8.13.0",
+    "sharp": "^0.33.0",
+    "simple-git": "^3.27.0",
+    "winston": "^3.15.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0",
+    "@types/sharp": "^0.31.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
+    "prisma": "^5.21.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

@@ -61,7 +61,7 @@ Responda APENAS com o JSON.
 `
 
     const response = await this.client.messages.create({
-      model: CLAUDE_MODELS.POWERFUL,
+      model: CLAUDE_MODELS.DEFAULT,
       max_tokens: 2000,
       messages: [{ role: 'user', content: prompt }],
     })
@@ -93,7 +93,7 @@ Formato: JSON com array de cenários contendo { tipo, descricao, passos, criteri
 `
 
     const response = await this.client.messages.create({
-      model: CLAUDE_MODELS.FAST,
+      model: CLAUDE_MODELS.DEFAULT,
       max_tokens: 4000,
       messages: [{ role: 'user', content: prompt }],
     })

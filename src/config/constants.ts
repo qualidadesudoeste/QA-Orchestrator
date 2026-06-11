@@ -54,7 +54,10 @@ export const PRODUCTION_RESTRICTIONS = [
   'Apenas leitura e validação passiva',
 ]
 
+// Cost-first model strategy: default to Sonnet, Haiku for trivial tasks.
+// Opus is disabled by default — only enable manually for critical security analysis.
 export const CLAUDE_MODELS = {
-  FAST: 'claude-sonnet-4-6',
-  POWERFUL: 'claude-opus-4-8',
+  DEFAULT: 'claude-sonnet-4-6',   // analysis, scenario gen, most tasks
+  LIGHT: 'claude-haiku-4-5-20251001', // data generation, simple checks, formatting
+  // OPUS: 'claude-opus-4-8',     // disabled — high cost, use only when explicitly needed
 } as const

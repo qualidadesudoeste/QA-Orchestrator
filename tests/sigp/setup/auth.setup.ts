@@ -10,6 +10,7 @@ fs.mkdirSync(path.join('playwright', '.auth'), { recursive: true })
 fs.mkdirSync(path.join('evidence', 'screenshots'), { recursive: true })
 
 const USER_SELECTORS = [
+  // Nomes específicos de plataformas Java/ERP
   'input[name="username"]',
   'input[name="login"]',
   'input[name="user"]',
@@ -17,9 +18,19 @@ const USER_SELECTORS = [
   'input[name="strUsuario"]',
   'input[name="nm_usuario"]',
   'input[name="Usuario"]',
+  'input[name="nm_login"]',
+  'input[name="ds_login"]',
+  'input[name="cd_usuario"]',
+  'input[name="nr_cpf"]',
+  // Por atributos parciais
   'input[id*="user" i]',
   'input[id*="login" i]',
   'input[id*="usuario" i]',
+  'input[id*="usu" i]',
+  'input[name*="user" i]',
+  'input[name*="login" i]',
+  'input[name*="usuario" i]',
+  // Fallback genérico — último recurso (pode pegar campo errado em forms com muitos inputs)
   'input[type="text"]:not([style*="display:none"]):not([style*="display: none"])',
 ]
 
@@ -176,15 +187,16 @@ async function printFrameTree(page: Page): Promise<void> {
       console.log(`  [${i}] ${frame.url()}`)
       console.log(`       inputs: ${inputCount} | buttons: ${btnCount}`)
 
-      // Lista os inputs visíveis para debug
-      if (inputCount > 0 && inputCount <= 10) {
+      // Lista todos os inputs para debug (sem limite de quantidade)
+      if (inputCount > 0) {
         const inputs = frame.locator('input')
         for (let j = 0; j < inputCount; j++) {
           const el = inputs.nth(j)
-          const name = await el.getAttribute('name').catch(() => '')
-          const type = await el.getAttribute('type').catch(() => '')
-          const id = await el.getAttribute('id').catch(() => '')
-          console.log(`         input[${j}]: name="${name}" type="${type}" id="${id}"`)
+          const name    = await el.getAttribute('name').catch(() => '')
+          const type    = await el.getAttribute('type').catch(() => '')
+          const id      = await el.getAttribute('id').catch(() => '')
+          const visible = await el.isVisible().catch(() => false)
+          console.log(`         input[${j}]: name="${name}" type="${type}" id="${id}" visible=${visible}`)
         }
       }
     } catch {

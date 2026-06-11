@@ -8,7 +8,7 @@
 
 **Última sessão:** 2026-06-11
 
-**Status:** `auth.setup.ts` reescrito com suporte a iframes — SIGP é um sistema no-code maker com login dentro de iframes.
+**Status:** iframe detectado com sucesso — aguardando confirmação do nome exato dos campos do formulário SIGP para fixar o seletor.
 
 **O que foi feito:**
 - Estrutura completa de pastas criada e publicada no GitHub
@@ -24,41 +24,45 @@
 - `src/tools/security/securityScanner.ts` — integração OWASP ZAP
 - `src/utils/` — logger, mascaramento LGPD, dados fictícios pt_BR
 - `.github/workflows/qa-pipeline.yml` — CI automático em todo PR
-- **`src/tools/playwright/screenMapper.ts`** ✓ — mapeia automaticamente campos, botões, grids, abas, filtros
-- **`src/tools/playwright/formTester.ts`** ✓ — testa obrigatoriedade, maxLength, chars especiais, SQL Injection, XSS, duplo envio
-- **`src/tools/playwright/gridHandler.ts`** ✓ — testa grid vazia/populada, paginação, ordenação, seleção, detalhes
-- **`src/tools/playwright/pageActions.ts`** ✓ — orquestra CRUD completo, filtros e captura de evidência
+- **`src/tools/playwright/screenMapper.ts`** ✓
+- **`src/tools/playwright/formTester.ts`** ✓
+- **`src/tools/playwright/gridHandler.ts`** ✓
+- **`src/tools/playwright/pageActions.ts`** ✓
+- **`src/scenarios/types.ts`** ✓
+- **`src/scenarios/generator.ts`** ✓
+- **`src/scenarios/runner.ts`** ✓
+- **`src/tools/database/`** ✓ — multi-banco: PostgreSQL, MySQL, Oracle, MongoDB
+- **`frontend/`** ✓ — pasta reservada (só .gitkeep)
+- **`src/tools/security/headerAnalyzer.ts`** ✓
+- **`src/tools/security/authTester.ts`** ✓
+- **`src/agents/securityAgent.ts`** ✓
+- **`tests/sigp/`** ✓ — login.spec, dashboard.spec, api/health.spec, security.spec
+- **`tests/sigp/setup/auth.setup.ts`** ✓ — **ATUALIZADO (2x nesta sessão):**
+  - Usa `page.frames()` para varrer todos os iframes
+  - `printFrameTree()` lista TODOS os inputs (nome, tipo, id, visible) de cada frame
+  - Seletores ampliados com variações SIGP (nm_login, ds_login, cd_usuario, etc.)
+  - Screenshots automáticos: `sigp-login-before.png`, `sigp-login-after.png`
 
-- **`src/scenarios/types.ts`** ✓ — interfaces TestScenario, ScenarioSuite, ScenarioResult, TestStep
-- **`src/scenarios/generator.ts`** ✓ — usa Claude Sonnet para gerar 15-25 cenários a partir do ScreenMap (positivo, negativo, borda, segurança, regressão, usabilidade, permissão, API)
-- **`src/scenarios/runner.ts`** ✓ — despacha cada tipo de cenário para o tool correto (FormTester, GridHandler, PageActions); prioriza HIGH→MEDIUM→LOW; pula destrutivos em produção
-
-- **`src/tools/database/`** ✓ — dbAnalyzer multi-banco com adaptadores para PostgreSQL, MySQL, Oracle (opcional/requer Instant Client) e MongoDB; métodos: captureSnapshot, diffSnapshots, validateRecord, inspectTable, listProcedures
-- **`frontend/`** ✓ — pasta reservada para a outra pessoa (só .gitkeep, sem código)
-
-- **`src/tools/security/headerAnalyzer.ts`** ✓ — analisa HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy e headers que expõem a stack; gera score 0-100
-- **`src/tools/security/authTester.ts`** ✓ — testa: acesso sem auth, tokens expirados/inválidos, IDOR por incremento de ID, JWT alg:none, CSRF (SameSite/Secure cookie + token em forms), escalonamento de privilégio em rotas admin
-- **`src/agents/securityAgent.ts`** ✓ — orquestra ZAP + headers + auth + form security; gera parecer com Claude Sonnet e recomendações com Haiku; salva relatório JSON mascarado em `reports/`
-
-- **`tests/sigp/`** ✓ — pasta dedicada ao sistema SIGP (ARH); estrutura: setup/auth, functional, api, security
-- **`tests/sigp/setup/auth.setup.ts`** ✓ — **ATUALIZADO:** usa `page.frames()` para varrer TODOS os iframes recursivamente; inclui `printFrameTree()` para debug de estrutura de frames; salva screenshots em `evidence/screenshots/sigp-login-before.png` e `sigp-login-after.png` para diagnóstico; session salva em `playwright/.auth/sigp.json`
-- **`tests/sigp/functional/login.spec.ts`** ✓ — 7 cenários: positivo, senha errada, campos vazios, usuário inexistente, SQLi, XSS, acessibilidade
-- **`tests/sigp/functional/dashboard.spec.ts`** ✓ — carregamento, erros JS, 5xx, performance < 10s, menus visíveis
-- **`tests/sigp/api/health.spec.ts`** ✓ — status HTTP, headers de segurança, stack exposta, acesso sem auth, tempo de resposta
-- **`tests/sigp/security/security.spec.ts`** ✓ — IDOR, clickjacking, mixed content, flags de cookies, vazamento em página de erro
+**O que descobrimos sobre o SIGP:**
+- Frame de login: `openform.do?sys=ARH&action=openform&[REDACTED]&firstLoad=true`
+- Frame `[1]` tem **14 inputs** e **4 botões**
+- Campos detectados pelo setup (usando seletor genérico de fallback):
+  - Usuário: `input[type="text"]` — **ainda não confirmamos o `name` exato**
+  - Senha: `input[type="password"]` ✓
+  - Botão: `button:has-text("Entrar")` ✓
+- **Pendência:** rodar setup de novo e colar o log dos 14 inputs para fixar o seletor correto do campo usuário
 
 **Sistema alvo atual:** SIGP — `https://sigp.[REDACTED_HOST]/SIGP/open.do?sys=ARH`
-Credenciais em `.env` local (gitignored). Para novos colaboradores: solicitar credenciais ao líder de QA.
+Credenciais em `.env` local (gitignored).
 
 **Próximos passos (ainda não feitos):**
-1. `npm install` e `npx playwright install` (setup local — rodar uma vez, se ainda não feito)
-2. **Executar o setup agora:** `npx playwright test --project=sigp-setup`
-   - Se ainda falhar: verificar `evidence/screenshots/sigp-login-before.png` e o log de frames no terminal
-   - O log mostrará exatamente quantos frames foram carregados e quais inputs existem em cada um
-3. Após setup passar: `npx playwright test --project=sigp-functional`
-4. Configurar Qdrant para memória vetorial
-5. Implementar relatório final consolidado
-6. Mapear módulos do SIGP após primeiro login funcional (cadastros, lançamentos, relatórios)
+1. Rodar: `npx playwright test --project=sigp-setup`
+2. Colar no chat o bloco `input[0..13]` do log — Claude adiciona o seletor exato do campo usuário
+3. Confirmar que o setup salva `playwright/.auth/sigp.json` com sucesso
+4. Rodar: `npx playwright test --project=sigp-functional`
+5. Configurar Qdrant para memória vetorial
+6. Implementar relatório final consolidado
+7. Mapear módulos do SIGP após login funcional (cadastros, lançamentos, relatórios)
 
 **Nota multi-banco:**
 - `DB_TYPE` no `.env` escolhe o adaptador: `postgres | mysql | oracle | mongodb`

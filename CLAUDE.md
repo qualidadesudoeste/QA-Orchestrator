@@ -33,13 +33,20 @@
 - **`src/scenarios/generator.ts`** ✓ — usa Claude Sonnet para gerar 15-25 cenários a partir do ScreenMap (positivo, negativo, borda, segurança, regressão, usabilidade, permissão, API)
 - **`src/scenarios/runner.ts`** ✓ — despacha cada tipo de cenário para o tool correto (FormTester, GridHandler, PageActions); prioriza HIGH→MEDIUM→LOW; pula destrutivos em produção
 
+- **`src/tools/database/`** ✓ — dbAnalyzer multi-banco com adaptadores para PostgreSQL, MySQL, Oracle (opcional/requer Instant Client) e MongoDB; métodos: captureSnapshot, diffSnapshots, validateRecord, inspectTable, listProcedures
+- **`frontend/`** ✓ — pasta reservada para a outra pessoa (só .gitkeep, sem código)
+
 **Próximos passos (ainda não feitos):**
 1. `npm install` e `npx playwright install` (setup local — rodar uma vez)
-2. Implementar `src/tools/database/dbAnalyzer.ts` — inspeção de schema SQL
-3. Implementar `src/agents/securityAgent.ts` — agente dedicado de segurança
-4. Criar primeiros testes em `tests/functional/` e `tests/api/`
-5. Configurar Qdrant para memória vetorial
-6. Implementar relatório final consolidado
+2. Implementar `src/agents/securityAgent.ts` — agente dedicado de segurança
+3. Criar primeiros testes em `tests/functional/` e `tests/api/`
+4. Configurar Qdrant para memória vetorial
+5. Implementar relatório final consolidado
+
+**Nota multi-banco:**
+- `DB_TYPE` no `.env` escolhe o adaptador: `postgres | mysql | oracle | mongodb`
+- Oracle está em `optionalDependencies` — se não tiver Instant Client instalado, avisa e não quebra o projeto
+- Frontend é responsabilidade de outro colaborador — não alterar a pasta `frontend/`
 
 **Pendência de infraestrutura:**
 - Renomear pasta `Agente de IA` → `QA-Orchestrator` (fazer fora do Claude Code):

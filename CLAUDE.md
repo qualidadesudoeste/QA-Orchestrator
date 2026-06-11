@@ -40,11 +40,22 @@
 - **`src/tools/security/authTester.ts`** ✓ — testa: acesso sem auth, tokens expirados/inválidos, IDOR por incremento de ID, JWT alg:none, CSRF (SameSite/Secure cookie + token em forms), escalonamento de privilégio em rotas admin
 - **`src/agents/securityAgent.ts`** ✓ — orquestra ZAP + headers + auth + form security; gera parecer com Claude Sonnet e recomendações com Haiku; salva relatório JSON mascarado em `reports/`
 
+- **`tests/sigp/`** ✓ — pasta dedicada ao sistema SIGP (ARH); estrutura: setup/auth, functional, api, security
+- **`tests/sigp/setup/auth.setup.ts`** ✓ — faz login uma vez e salva sessão em `playwright/.auth/sigp.json` para reuso
+- **`tests/sigp/functional/login.spec.ts`** ✓ — 7 cenários: positivo, senha errada, campos vazios, usuário inexistente, SQLi, XSS, acessibilidade
+- **`tests/sigp/functional/dashboard.spec.ts`** ✓ — carregamento, erros JS, 5xx, performance < 10s, menus visíveis
+- **`tests/sigp/api/health.spec.ts`** ✓ — status HTTP, headers de segurança, stack exposta, acesso sem auth, tempo de resposta
+- **`tests/sigp/security/security.spec.ts`** ✓ — IDOR, clickjacking, mixed content, flags de cookies, vazamento em página de erro
+
+**Sistema alvo atual:** SIGP — `https://sigp.techpulseglobal.com.br/SIGP/open.do?sys=ARH`
+Credenciais em `.env` local (gitignored). Para novos colaboradores: solicitar credenciais ao líder de QA.
+
 **Próximos passos (ainda não feitos):**
 1. `npm install` e `npx playwright install` (setup local — rodar uma vez)
-2. Criar primeiros testes em `tests/functional/` e `tests/api/`
+2. Executar os testes: `npx playwright test --project=sigp-setup && npx playwright test --project=sigp-functional`
 3. Configurar Qdrant para memória vetorial
 4. Implementar relatório final consolidado
+5. Mapear módulos do SIGP após primeiro run (cadastros, lançamentos, relatórios)
 
 **Nota multi-banco:**
 - `DB_TYPE` no `.env` escolhe o adaptador: `postgres | mysql | oracle | mongodb`

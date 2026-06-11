@@ -1,5 +1,4 @@
 import { defineConfig, devices } from '@playwright/test'
-import { AllureReporter } from 'allure-playwright'
 
 export default defineConfig({
   testDir: './tests',
@@ -20,13 +19,45 @@ export default defineConfig({
   use: {
     baseURL: process.env.BASE_URL,
     trace: 'retain-on-failure',
-    screenshot: 'only-on-failure',
+    screenshot: 'on-first-retry',
     video: 'retain-on-failure',
     actionTimeout: 15_000,
     navigationTimeout: 30_000,
+    locale: 'pt-BR',
+    timezoneId: 'America/Sao_Paulo',
   },
 
   projects: [
+    // ── SIGP ──────────────────────────────────────────────────
+    {
+      name: 'sigp-setup',
+      testMatch: /sigp\/setup\/auth\.setup\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'sigp-functional',
+      testDir: './tests/sigp/functional',
+      dependencies: ['sigp-setup'],
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: 'playwright/.auth/sigp.json',
+      },
+    },
+    {
+      name: 'sigp-security',
+      testDir: './tests/sigp/security',
+      dependencies: ['sigp-setup'],
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: 'playwright/.auth/sigp.json',
+      },
+    },
+    {
+      name: 'sigp-api',
+      testDir: './tests/sigp/api',
+    },
+
+    // ── Suítes genéricas (outros sistemas) ────────────────────
     {
       name: 'functional',
       testDir: './tests/functional',

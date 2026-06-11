@@ -12,6 +12,9 @@ build/
 .env.local
 .env.*.local
 
+# Playwright auth state (contains session tokens — never commit)
+playwright/.auth/
+
 # Test outputs
 allure-results/
 allure-report/

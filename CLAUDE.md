@@ -8,34 +8,35 @@
 
 **Última sessão:** 2026-06-11
 
-**Status:** Scaffold inicial criado e commitado (`07d6a20`). Projeto ainda não publicado no GitHub (falta `git remote add origin` + `git push`).
+**Status:** Projeto publicado no GitHub (`github.com/qualidadesudoeste/QA-Orchestrator`). Módulo Playwright implementado.
 
 **O que foi feito:**
-- Estrutura completa de pastas criada
+- Estrutura completa de pastas criada e publicada no GitHub
 - `package.json` com toda a stack definida
 - `tsconfig.json`, `playwright.config.ts`, `docker-compose.yml`
 - `prisma/schema.prisma` com modelos BugReport, KnowledgeEntry, TestRun
-- `src/agents/orchestrator.ts` — motor principal (Claude)
-- `src/config/constants.ts` — constantes, modelos, padrões LGPD
+- `src/agents/orchestrator.ts` — motor principal (Claude Sonnet)
+- `src/config/constants.ts` — Opus desabilitado, Sonnet padrão, Haiku para tarefas leves
 - `src/config/environments.ts` — validação de env vars com Zod
-- `src/memory/knowledgeBase.ts` — memória evolutiva de bugs
-- `src/reports/bugReport.ts` — geração de relatório com detecção de reincidência
-- `src/tools/git/gitAnalyzer.ts` — análise de commits e PRs
+- `src/memory/knowledgeBase.ts` — memória evolutiva de bugs com detecção de reincidência
+- `src/reports/bugReport.ts` — geração de relatório estruturado
+- `src/tools/git/gitAnalyzer.ts` — análise de commits e PRs via GitHub API
 - `src/tools/security/securityScanner.ts` — integração OWASP ZAP
 - `src/utils/` — logger, mascaramento LGPD, dados fictícios pt_BR
-- `.github/workflows/qa-pipeline.yml` — CI automático
-- `.gitignore`, `.env.example`
+- `.github/workflows/qa-pipeline.yml` — CI automático em todo PR
+- **`src/tools/playwright/screenMapper.ts`** ✓ — mapeia automaticamente campos, botões, grids, abas, filtros
+- **`src/tools/playwright/formTester.ts`** ✓ — testa obrigatoriedade, maxLength, chars especiais, SQL Injection, XSS, duplo envio
+- **`src/tools/playwright/gridHandler.ts`** ✓ — testa grid vazia/populada, paginação, ordenação, seleção, detalhes
+- **`src/tools/playwright/pageActions.ts`** ✓ — orquestra CRUD completo, filtros e captura de evidência
 
 **Próximos passos (ainda não feitos):**
-1. Publicar no GitHub (`git remote add origin ...` + `git push`)
-2. `npm install` e `npx playwright install`
-3. Implementar `src/tools/playwright/` — mapeamento automático de telas
-4. Implementar `src/scenarios/generator.ts` — geração de cenários por análise de UI
-5. Implementar `src/tools/database/dbAnalyzer.ts` — inspeção de schema SQL
-6. Implementar `src/agents/securityAgent.ts` — agente dedicado de segurança
-7. Criar primeiros testes em `tests/functional/` e `tests/api/`
-8. Configurar Qdrant para memória vetorial
-9. Implementar relatório final consolidado
+1. `npm install` e `npx playwright install` (setup local — rodar uma vez)
+2. Implementar `src/scenarios/generator.ts` — geração de cenários por análise de UI
+3. Implementar `src/tools/database/dbAnalyzer.ts` — inspeção de schema SQL
+4. Implementar `src/agents/securityAgent.ts` — agente dedicado de segurança
+5. Criar primeiros testes em `tests/functional/` e `tests/api/`
+6. Configurar Qdrant para memória vetorial
+7. Implementar relatório final consolidado
 
 **Pendência de infraestrutura:**
 - Renomear pasta `Agente de IA` → `QA-Orchestrator` (fazer fora do Claude Code):

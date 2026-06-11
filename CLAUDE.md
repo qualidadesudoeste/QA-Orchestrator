@@ -36,12 +36,15 @@
 - **`src/tools/database/`** ✓ — dbAnalyzer multi-banco com adaptadores para PostgreSQL, MySQL, Oracle (opcional/requer Instant Client) e MongoDB; métodos: captureSnapshot, diffSnapshots, validateRecord, inspectTable, listProcedures
 - **`frontend/`** ✓ — pasta reservada para a outra pessoa (só .gitkeep, sem código)
 
+- **`src/tools/security/headerAnalyzer.ts`** ✓ — analisa HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy e headers que expõem a stack; gera score 0-100
+- **`src/tools/security/authTester.ts`** ✓ — testa: acesso sem auth, tokens expirados/inválidos, IDOR por incremento de ID, JWT alg:none, CSRF (SameSite/Secure cookie + token em forms), escalonamento de privilégio em rotas admin
+- **`src/agents/securityAgent.ts`** ✓ — orquestra ZAP + headers + auth + form security; gera parecer com Claude Sonnet e recomendações com Haiku; salva relatório JSON mascarado em `reports/`
+
 **Próximos passos (ainda não feitos):**
 1. `npm install` e `npx playwright install` (setup local — rodar uma vez)
-2. Implementar `src/agents/securityAgent.ts` — agente dedicado de segurança
-3. Criar primeiros testes em `tests/functional/` e `tests/api/`
-4. Configurar Qdrant para memória vetorial
-5. Implementar relatório final consolidado
+2. Criar primeiros testes em `tests/functional/` e `tests/api/`
+3. Configurar Qdrant para memória vetorial
+4. Implementar relatório final consolidado
 
 **Nota multi-banco:**
 - `DB_TYPE` no `.env` escolhe o adaptador: `postgres | mysql | oracle | mongodb`

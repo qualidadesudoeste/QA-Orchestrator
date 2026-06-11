@@ -29,14 +29,17 @@
 - **`src/tools/playwright/gridHandler.ts`** ✓ — testa grid vazia/populada, paginação, ordenação, seleção, detalhes
 - **`src/tools/playwright/pageActions.ts`** ✓ — orquestra CRUD completo, filtros e captura de evidência
 
+- **`src/scenarios/types.ts`** ✓ — interfaces TestScenario, ScenarioSuite, ScenarioResult, TestStep
+- **`src/scenarios/generator.ts`** ✓ — usa Claude Sonnet para gerar 15-25 cenários a partir do ScreenMap (positivo, negativo, borda, segurança, regressão, usabilidade, permissão, API)
+- **`src/scenarios/runner.ts`** ✓ — despacha cada tipo de cenário para o tool correto (FormTester, GridHandler, PageActions); prioriza HIGH→MEDIUM→LOW; pula destrutivos em produção
+
 **Próximos passos (ainda não feitos):**
 1. `npm install` e `npx playwright install` (setup local — rodar uma vez)
-2. Implementar `src/scenarios/generator.ts` — geração de cenários por análise de UI
-3. Implementar `src/tools/database/dbAnalyzer.ts` — inspeção de schema SQL
-4. Implementar `src/agents/securityAgent.ts` — agente dedicado de segurança
-5. Criar primeiros testes em `tests/functional/` e `tests/api/`
-6. Configurar Qdrant para memória vetorial
-7. Implementar relatório final consolidado
+2. Implementar `src/tools/database/dbAnalyzer.ts` — inspeção de schema SQL
+3. Implementar `src/agents/securityAgent.ts` — agente dedicado de segurança
+4. Criar primeiros testes em `tests/functional/` e `tests/api/`
+5. Configurar Qdrant para memória vetorial
+6. Implementar relatório final consolidado
 
 **Pendência de infraestrutura:**
 - Renomear pasta `Agente de IA` → `QA-Orchestrator` (fazer fora do Claude Code):

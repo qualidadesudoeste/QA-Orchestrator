@@ -8,7 +8,7 @@
 
 **Última sessão:** 2026-06-11
 
-**Status:** Projeto publicado no GitHub (`github.com/qualidadesudoeste/QA-Orchestrator`). Módulo Playwright implementado.
+**Status:** `auth.setup.ts` reescrito com suporte a iframes — SIGP é um sistema no-code maker com login dentro de iframes.
 
 **O que foi feito:**
 - Estrutura completa de pastas criada e publicada no GitHub
@@ -41,7 +41,7 @@
 - **`src/agents/securityAgent.ts`** ✓ — orquestra ZAP + headers + auth + form security; gera parecer com Claude Sonnet e recomendações com Haiku; salva relatório JSON mascarado em `reports/`
 
 - **`tests/sigp/`** ✓ — pasta dedicada ao sistema SIGP (ARH); estrutura: setup/auth, functional, api, security
-- **`tests/sigp/setup/auth.setup.ts`** ✓ — faz login uma vez e salva sessão em `playwright/.auth/sigp.json` para reuso
+- **`tests/sigp/setup/auth.setup.ts`** ✓ — **ATUALIZADO:** usa `page.frames()` para varrer TODOS os iframes recursivamente; inclui `printFrameTree()` para debug de estrutura de frames; salva screenshots em `evidence/screenshots/sigp-login-before.png` e `sigp-login-after.png` para diagnóstico; session salva em `playwright/.auth/sigp.json`
 - **`tests/sigp/functional/login.spec.ts`** ✓ — 7 cenários: positivo, senha errada, campos vazios, usuário inexistente, SQLi, XSS, acessibilidade
 - **`tests/sigp/functional/dashboard.spec.ts`** ✓ — carregamento, erros JS, 5xx, performance < 10s, menus visíveis
 - **`tests/sigp/api/health.spec.ts`** ✓ — status HTTP, headers de segurança, stack exposta, acesso sem auth, tempo de resposta
@@ -51,11 +51,14 @@
 Credenciais em `.env` local (gitignored). Para novos colaboradores: solicitar credenciais ao líder de QA.
 
 **Próximos passos (ainda não feitos):**
-1. `npm install` e `npx playwright install` (setup local — rodar uma vez)
-2. Executar os testes: `npx playwright test --project=sigp-setup && npx playwright test --project=sigp-functional`
-3. Configurar Qdrant para memória vetorial
-4. Implementar relatório final consolidado
-5. Mapear módulos do SIGP após primeiro run (cadastros, lançamentos, relatórios)
+1. `npm install` e `npx playwright install` (setup local — rodar uma vez, se ainda não feito)
+2. **Executar o setup agora:** `npx playwright test --project=sigp-setup`
+   - Se ainda falhar: verificar `evidence/screenshots/sigp-login-before.png` e o log de frames no terminal
+   - O log mostrará exatamente quantos frames foram carregados e quais inputs existem em cada um
+3. Após setup passar: `npx playwright test --project=sigp-functional`
+4. Configurar Qdrant para memória vetorial
+5. Implementar relatório final consolidado
+6. Mapear módulos do SIGP após primeiro login funcional (cadastros, lançamentos, relatórios)
 
 **Nota multi-banco:**
 - `DB_TYPE` no `.env` escolhe o adaptador: `postgres | mysql | oracle | mongodb`

@@ -49,6 +49,8 @@ export type SystemKind = 'web-form-login' | 'unknown'
 export interface SystemProfile {
   /** Identificador estável derivado da URL (slug do host). */
   id: string
+  /** Código curto do sistema para as pastas (SIGP, CLE, SGOS...). */
+  code?: string
   name: string
   baseUrl: string
   kind: SystemKind

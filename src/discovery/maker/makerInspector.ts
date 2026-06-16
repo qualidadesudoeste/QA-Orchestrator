@@ -23,9 +23,8 @@ import type { Browser, Frame, Page } from '@playwright/test'
 import fs from 'fs'
 import path from 'path'
 import { findInFrames, waitForAnyFrameSelector } from '../../tools/playwright/frameUtils'
-import { profileStore, idFromUrl } from '../systemProfile'
-
-const OUT_DIR = path.join('evidence', 'maker')
+import { profileStore } from '../systemProfile'
+import { systemInfoDir, resolveCode } from '../../knowledge/layout'
 
 /** Padrões de "abrir formulário" típicos do Maker/Webrun. */
 const MENU_SELECTORS = [
@@ -49,6 +48,7 @@ export interface MakerMenuItem {
   trigger: string // onclick ou href que abre a tela
   frameUrl: string
   depth: number // profundidade do frame (0 = topo)
+  visible: boolean // true = menu de topo; false = submenu colapsado
 }
 
 export interface FrameNode {
@@ -68,8 +68,8 @@ export interface MakerInspection {
 }
 
 export async function inspectMaker(url: string, opts: { headed?: boolean } = {}): Promise<MakerInspection> {
-  fs.mkdirSync(OUT_DIR, { recursive: true })
-  const id = idFromUrl(url)
+  const code = resolveCode(url)
+  const outDir = systemInfoDir(code)
   const profile = profileStore.loadByUrl(url)
 
   const userSel = profile?.login?.usernameSelectors ?? [
@@ -96,7 +96,7 @@ export async function inspectMaker(url: string, opts: { headed?: boolean } = {})
     // Maker carrega os frames de menu/conteúdo após o login — dá um tempo.
     await page.waitForTimeout(6000)
 
-    const screenshotPath = path.join(OUT_DIR, `${id}-app.png`)
+    const screenshotPath = path.join(outDir, 'menu-app.png')
     await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {})
 
     console.log('[3/4] Varrendo TODOS os frames aninhados ...')
@@ -108,13 +108,16 @@ export async function inspectMaker(url: string, opts: { headed?: boolean } = {})
 
     console.log('[4/4] Extraindo menus/submenus (padrão Maker) ...')
     const menus = await collectMakerMenus(page)
-    console.log(`      ${menus.length} item(ns) de menu encontrados`)
-    for (const m of menus.slice(0, 40)) {
-      console.log(`        • ${m.label}${m.formId ? `  [formID=${m.formId}]` : ''}`)
-    }
+    const topo = menus.filter(m => m.visible)
+    const subs = menus.filter(m => !m.visible)
+    console.log(`      ${menus.length} itens (${topo.length} de topo + ${subs.length} submenus colapsados)`)
+    console.log('      — Menus de topo:')
+    for (const m of topo) console.log(`        ▸ ${m.label}${m.formId ? `  [formID=${m.formId}]` : ''}`)
+    console.log('      — Submenus / telas (amostra):')
+    for (const m of subs.slice(0, 50)) console.log(`        · ${m.label}${m.formId ? `  [formID=${m.formId}]` : ''}`)
 
     const report: MakerInspection = { url, loggedIn, frameTree, menus, screenshotPath }
-    const reportPath = path.join(OUT_DIR, `${id}-menu.json`)
+    const reportPath = path.join(outDir, 'menu.json')
     fs.writeFileSync(reportPath, JSON.stringify(report, null, 2), 'utf-8')
     console.log(`\n✓ Relatório salvo: ${reportPath}`)
     console.log(`✓ Screenshot: ${screenshotPath}`)
@@ -173,7 +176,12 @@ async function mapFrameTree(page: Page): Promise<FrameNode[]> {
   return nodes
 }
 
-/** Coleta itens de menu/submenu em todos os frames, pelo padrão Maker. */
+/**
+ * Coleta itens de menu/submenu em todos os frames, pelo padrão Maker.
+ * No Maker os submenus ficam no DOM mas COLAPSADOS (escondidos) — por isso
+ * coletamos itens visíveis E ocultos, marcando a visibilidade. Assim o mapa
+ * traz menus de topo + submenus, cada um com seu formID (tela única).
+ */
 async function collectMakerMenus(page: Page): Promise<MakerMenuItem[]> {
   const items: MakerMenuItem[] = []
   const seen = new Set<string>()
@@ -186,22 +194,26 @@ async function collectMakerMenus(page: Page): Promise<MakerMenuItem[]> {
     for (const sel of MENU_SELECTORS) {
       const handles = await frame.locator(sel).all().catch(() => [])
       for (const h of handles) {
-        const visible = await h.isVisible().catch(() => false)
-        if (!visible) continue
-        const label = ((await h.innerText().catch(() => '')) || '').trim().replace(/\s+/g, ' ')
+        const label = (
+          (await h.innerText().catch(() => '')) ||
+          (await h.getAttribute('title').catch(() => '')) ||
+          ''
+        ).trim().replace(/\s+/g, ' ')
         if (!label || label.length > 60) continue
         const onclick = (await h.getAttribute('onclick').catch(() => '')) ?? ''
         const href = (await h.getAttribute('href').catch(() => '')) ?? ''
         const trigger = onclick || href
         const formId = extractFormId(trigger)
+        const visible = await h.isVisible().catch(() => false)
         const key = `${label}|${formId ?? trigger}`
         if (seen.has(key)) continue
         seen.add(key)
-        items.push({ label, formId, trigger: trigger.slice(0, 120), frameUrl: furl, depth })
+        items.push({ label, formId, trigger: trigger.slice(0, 120), frameUrl: furl, depth, visible })
       }
     }
   }
-  return items
+  // Visíveis primeiro (menus de topo), depois submenus colapsados.
+  return items.sort((a, b) => Number(b.visible) - Number(a.visible))
 }
 
 function extractFormId(s: string): string | null {

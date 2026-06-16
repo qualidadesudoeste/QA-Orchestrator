@@ -6,7 +6,31 @@
 
 ## Onde paramos (atualizar a cada sessão)
 
-**Última sessão:** 2026-06-15
+**Última sessão:** 2026-06-16
+
+**Status:** Fases A–D funcionando + camada Maker + estrutura de conhecimento organizada. Parado para retomar amanhã.
+
+**Feito em 2026-06-16:**
+- **3 provedores de IA plugáveis** (`anthropic | openai | gemini` via `AI_PROVIDER`). Gemini free tier é o que roda (Anthropic e OpenAI com chaves válidas mas **sem saldo**). Gemini: safety liberado + retry 429/503/RECITATION + temperatura.
+- **Fase C** (navigator): login real + navegação de menus — rpgbuilder e CLE.
+- **Fase D** (screenTest): abre uma tela, lê campos/abas no iframe Maker, **preenche dados** (`--fill`), gera BDD; `--headed` abre Chrome visível. Provado no CLE "Tipo de Evento" (5 campos, 3 abas) e saucedemo (10 cenários).
+- **Camada Maker** (makerInspector): lê iframes aninhados; mapeou **57 menus/submenus do CLE** (`systems/CLE/system_info/menu.json`). Arquitetura Maker aprendida pelo FRZ/jar do SGOS: fluxos = fluxograma de funções/SQL; telas por `CodigoForm`; campos `WFRInput` via `dictionary.xml`.
+- **Estrutura de conhecimento** (`knowledge/layout.ts` + `scaffold.ts`): `systems/<CODE>/{system_info,knowledge,screens/<tela>,executions,reports,learned_patterns}`, `evidences/`, `metrics/`, `prompts/`, `templates/`. Limpeza geral da raiz (removido evidence/ antigo, artifacts/, paths.ts órfão).
+
+**Comandos novos:** `explore`, `discover`, `navigate`, `maker:inspect`, `screen`, `testgen`, `scaffold`, `profile:*`.
+
+**Bloqueador conhecido:** CLE exige **VPN ligada e estável** (caiu no meio de uma rodada). Quando estável: `npm run screen -- "https://[REDACTED_HOST]/eventos/open.do?sys=CLE" "Tipo de Evento" --headed --fill`.
+
+**Próxima sessão (amanhã):**
+1. Rodar `screen` completo no CLE com VPN estável (login→tela→preenche→abas→BDD)
+2. **EXECUTAR** os cenários BDD (`BddPlaywrightRunner` já existe) e reportar passou/falhou
+3. Loop sobre as 57 telas do CLE usando o `menu.json`
+4. Ingerir o FRZ/`dictionary.xml` do SGOS para enriquecer `knowledge/business_rules`
+5. **Rotacionar as 3 chaves de API** (Anthropic, OpenAI, Gemini — foram coladas em texto puro)
+
+---
+
+### Sessão 2026-06-15 (histórico)
 
 **Status:** virada de arquitetura aprovada ("Pode Seguir") — agente genérico que aprende qualquer sistema. **Fase A concluída.**
 

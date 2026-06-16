@@ -31,6 +31,15 @@ test-results/
 *.jar
 *.jar.zip
 
+# Base de conhecimento: versiona o .md (conhecimento), ignora binário/sensível
+systems/**/screenshots/
+systems/**/executions/
+systems/**/system_info/credentials.md
+evidences/**/*.png
+evidences/**/*.jpg
+evidences/**/*.webm
+evidences/**/*.zip
+
 # Prisma
 prisma/migrations/
 

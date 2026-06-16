@@ -17,7 +17,7 @@ import fs from 'fs'
 import path from 'path'
 import { explore } from './explorer'
 import { getProvider } from './aiProvider'
-import { idFromUrl } from './systemProfile'
+import { idFromUrl, profileStore } from './systemProfile'
 
 export interface BddScenarioGen {
   tipo: string
@@ -65,11 +65,28 @@ export async function generateTests(
   const id = idFromUrl(url)
 
   console.log(`\n[1/3] Mapeando a tela ${url} ...`)
-  const exploration = await explore(url, { headless: !opts.headed })
-  const fields = exploration.inputs
+  // settle maior: sistemas Maker carregam o form num iframe aninhado depois.
+  const exploration = await explore(url, { headless: !opts.headed, settleMs: 8000 })
+  let fields = exploration.inputs
     .filter(i => i.visible)
     .map(i => `${i.type} name="${i.name}" id="${i.id}" placeholder="${i.placeholder}" aria="${i.ariaLabel}"`)
   const buttons = exploration.buttons.filter(b => b.visible).map(b => `"${b.text}" type=${b.type}`)
+
+  // Fallback Maker/iframe: se o scrape não achou campos mas o perfil aprendido
+  // (via visão) já conhece o login, usa esses campos conhecidos.
+  if (fields.length === 0) {
+    const profile = profileStore.loadByUrl(url)
+    if (profile?.login) {
+      const uSel = profile.login.usernameSelectors[0] ?? '(usuário)'
+      const pSel = profile.login.passwordSelectors[0] ?? '(senha)'
+      fields = [
+        `campo de usuário/login (seletor aprendido: ${uSel})`,
+        `campo de senha (seletor aprendido: ${pSel})`,
+      ]
+      console.log(`      (scrape vazio — usando campos do perfil aprendido: usuário + senha)`)
+    }
+  }
+
   console.log(`      ${fields.length} campos, ${buttons.length} botões`)
   if (exploration.blocked) console.log(`      ⚠️ ${exploration.blocked.reason}`)
 

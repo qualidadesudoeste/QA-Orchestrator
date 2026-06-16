@@ -21,6 +21,8 @@
     "navigate": "ts-node src/discovery/navigator.ts",
     "testgen": "ts-node src/discovery/testGen.ts",
     "maker:inspect": "ts-node src/discovery/maker/makerInspector.ts",
+    "screen": "ts-node src/discovery/screenTest.ts",
+    "scaffold": "ts-node src/knowledge/scaffold.ts",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit"
   },

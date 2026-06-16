@@ -34,7 +34,12 @@ export class GeminiProvider implements AiProvider {
       model: process.env.GEMINI_MODEL ?? 'gemini-flash-latest',
       systemInstruction: input.systemPrompt,
       safetySettings: SAFETY,
-      generationConfig: { maxOutputTokens: input.maxTokens ?? 1024, responseMimeType: 'application/json' },
+      generationConfig: {
+        maxOutputTokens: input.maxTokens ?? 1024,
+        responseMimeType: 'application/json',
+        // Temperatura mais alta reduz bloqueio por RECITATION (saída "decorada").
+        temperature: Number(process.env.GEMINI_TEMPERATURE ?? 1),
+      },
     })
 
     const parts: Part[] = [{ text: input.userPrompt }]
@@ -57,7 +62,10 @@ export class GeminiProvider implements AiProvider {
         }
       } catch (err: unknown) {
         const e = err as { status?: number; message?: string }
-        const transient = e.status === 429 || e.status === 503 || /overload|too many|unavailable/i.test(e.message ?? '')
+        const transient =
+          e.status === 429 ||
+          e.status === 503 ||
+          /overload|too many|unavailable|recitation|blocked/i.test(e.message ?? '')
         if (transient && attempt < maxAttempts) {
           const waitMs = 4000 * attempt
           console.log(`      (Gemini ${e.status ?? ''} — tentativa ${attempt}/${maxAttempts}, aguardando ${waitMs / 1000}s)`)

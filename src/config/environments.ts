@@ -17,8 +17,8 @@ const envSchema = z.object({
   VAULT_TOKEN: z.string().optional(),
   ZAP_API_URL: z.string().default('http://localhost:8090'),
   ZAP_API_KEY: z.string().optional(),
-  EVIDENCE_DIR: z.string().default('evidence'),
-  REPORTS_DIR: z.string().default('reports'),
+  EVIDENCE_DIR: z.string().default('artifacts/evidence'),
+  REPORTS_DIR: z.string().default('artifacts/reports'),
   TEST_DATA_LOCALE: z.string().default('pt_BR'),
 })
 

@@ -13,12 +13,13 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
+    "baseUrl": ".",
     "paths": {
       "@agents/*": ["src/agents/*"],
       "@tools/*": ["src/tools/*"],
       "@memory/*": ["src/memory/*"],
       "@scenarios/*": ["src/scenarios/*"],
-      "@reports/*": ["src/reports/*"],
+      "@reporting/*": ["src/reporting/*"],
       "@config/*": ["src/config/*"],
       "@utils/*": ["src/utils/*"]
     }

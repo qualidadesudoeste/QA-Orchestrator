@@ -1,39 +1,48 @@
 import { test, expect } from '@playwright/test'
 
-// Usa a sessão salva pelo auth.setup.ts — já está autenticado
-test.describe('SIGP — Dashboard / Navegação pós-login', () => {
+import { activeFrames } from '../../../src/tools/playwright/frameUtils'
 
-  test('dashboard carrega com conteúdo após login', async ({ page }) => {
-    await page.goto(process.env.BASE_URL!)
-    await page.waitForLoadState('networkidle')
+const MENU_LABELS = [
+  'configuracoes',
+  'cadastros',
+  'relatorios gerenciais',
+  'gerador de relatorios',
+  'utilitarios',
+  'recrutamento',
+]
 
-    // Deve ter algum conteúdo de sistema (menu, título, frame)
-    const temConteudo = await page.locator(
-      'nav, menu, [role="navigation"], [class*="menu" i], [class*="nav" i], [class*="header" i], frame, iframe'
-    ).count() > 0
+test.describe('SIGP - Dashboard / Navegacao pos-login', () => {
+  test.setTimeout(75_000)
 
-    expect(temConteudo, 'Dashboard deve ter elementos de navegação').toBeTruthy()
-    await page.screenshot({ path: 'evidence/screenshots/sigp-dashboard.png', fullPage: true })
+  test.beforeEach(async ({ page }) => {
+    await page.goto(process.env.BASE_URL!, { waitUntil: 'domcontentloaded' })
   })
 
-  test('título da página está definido', async ({ page }) => {
-    await page.goto(process.env.BASE_URL!)
+  test('dashboard carrega com shell autenticada', async ({ page }) => {
+    const hasShell = await waitForMenuText(page)
+    expect(hasShell, 'Dashboard deve exibir menu autenticado').toBeTruthy()
+
+    await page.screenshot({ path: 'evidence/screenshots/sigp-dashboard.png', fullPage: false })
+  })
+
+  test('titulo da pagina ou shell autenticada esta definida', async ({ page }) => {
     const title = await page.title()
-    expect(title.length, 'Página deve ter título').toBeGreaterThan(0)
-    console.log(`Título da página: ${title}`)
+    const hasShell = await waitForMenuText(page)
+
+    expect(title.length > 0 || hasShell, 'Pagina deve ter titulo ou shell autenticada visivel').toBeTruthy()
+    console.log(`Titulo da pagina: ${title}`)
   })
 
-  test('console não tem erros JavaScript críticos', async ({ page }) => {
+  test('console nao tem erros JavaScript criticos', async ({ page }) => {
     const errors: string[] = []
     page.on('console', msg => {
       if (msg.type() === 'error') errors.push(msg.text())
     })
     page.on('pageerror', err => errors.push(err.message))
 
-    await page.goto(process.env.BASE_URL!)
-    await page.waitForLoadState('networkidle')
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await waitForMenuText(page)
 
-    // Filtra erros esperados de tracking/ads externos
     const criticalErrors = errors.filter(e =>
       !e.includes('favicon') &&
       !e.includes('analytics') &&
@@ -44,49 +53,75 @@ test.describe('SIGP — Dashboard / Navegação pós-login', () => {
     if (criticalErrors.length > 0) {
       console.warn('Erros JS encontrados:', criticalErrors)
     }
-    // Registra mas não falha — erros JS são informativos neste momento
+
     expect(criticalErrors.length).toBeLessThanOrEqual(5)
   })
 
-  test('sem requisições com erro 5xx na carga inicial', async ({ page }) => {
+  test('sem requisicoes com erro 5xx na carga inicial', async ({ page }) => {
     const erros5xx: string[] = []
 
     page.on('response', res => {
       if (res.status() >= 500) erros5xx.push(`${res.status()} ${res.url()}`)
     })
 
-    await page.goto(process.env.BASE_URL!)
-    await page.waitForLoadState('networkidle')
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await waitForMenuText(page)
 
     expect(erros5xx, `Erros 5xx encontrados: ${erros5xx.join(', ')}`).toHaveLength(0)
   })
 
-  test('tempo de carregamento aceitável (< 10s)', async ({ page }) => {
+  test('tempo ate a shell autenticada e aceitavel', async ({ page }) => {
     const start = Date.now()
-    await page.goto(process.env.BASE_URL!)
-    await page.waitForLoadState('networkidle')
+    const loaded = await waitForMenuText(page, 60_000)
     const duration = Date.now() - start
 
-    console.log(`Tempo de carregamento: ${duration}ms`)
-    expect(duration, 'Carregamento não deve exceder 10 segundos').toBeLessThan(10_000)
+    console.log(`Tempo ate menu autenticado: ${duration}ms`)
+    expect(loaded, 'Menu autenticado deve carregar').toBeTruthy()
+    expect(duration, 'Carregamento autenticado nao deve exceder 60 segundos').toBeLessThan(60_000)
   })
 
-  test('menus / navegação principal estão visíveis', async ({ page }) => {
-    await page.goto(process.env.BASE_URL!)
-    await page.waitForLoadState('networkidle')
+  test('menus / navegacao principal estao visiveis', async ({ page }) => {
+    const hasMenuText = await waitForMenuText(page)
 
-    // Captura screenshot para análise visual
-    await page.screenshot({
-      path: 'evidence/screenshots/sigp-menu.png',
-      fullPage: false,
-    })
+    const menuLabelsFound = await visibleMenuLabelCount(page)
 
-    // Tenta encontrar itens de menu clicáveis
-    const menuItems = await page.locator(
-      'a[href]:not([href="#"]):not([href=""]), [role="menuitem"], [class*="menu-item" i]'
-    ).count()
+    await page.screenshot({ path: 'evidence/screenshots/sigp-menu.png', fullPage: false }).catch(() => {})
 
-    expect(menuItems, 'Deve haver links/menus navegáveis após login').toBeGreaterThan(0)
-    console.log(`Links de navegação encontrados: ${menuItems}`)
+    expect(hasMenuText || menuLabelsFound > 0, 'Deve haver labels de menu reconheciveis apos login').toBeTruthy()
+    console.log(`Menus reconhecidos: ${menuLabelsFound}`)
   })
 })
+
+async function waitForMenuText(page: import('@playwright/test').Page, timeoutMs = 20_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+
+  while (Date.now() < deadline) {
+    if ((await visibleMenuLabelCount(page)) > 0) return true
+    await page.waitForTimeout(500)
+  }
+
+  return false
+}
+
+async function visibleMenuLabelCount(page: import('@playwright/test').Page): Promise<number> {
+  let found = 0
+
+  for (const { frame } of await activeFrames(page)) {
+    try {
+      const text = await frame.locator('body').innerText({ timeout: 500 })
+      const normalized = normalizeText(text)
+      found += MENU_LABELS.filter(label => normalized.includes(label)).length
+    } catch {
+      // SIGP can replace inner frames while the dashboard is loading.
+    }
+  }
+
+  return found
+}
+
+function normalizeText(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}

@@ -1,8 +1,14 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { chromium } from '@playwright/test'
+import type { Browser, BrowserContext } from '@playwright/test'
+import { existsSync } from 'fs'
+import path from 'path'
 import { env, isProduction } from '@config/environments'
 import { CLAUDE_MODELS, PRODUCTION_RESTRICTIONS, RISK_LEVELS } from '@config/constants'
 import { logger } from '@utils/logger'
-import { maskObject } from '@utils/dataMasking'
+import { ScreenMapper } from '@tools/playwright/screenMapper'
+import { ScenarioGenerator, ScenarioRunner } from '@scenarios/index'
+import { knowledgeBase } from '@memory/knowledgeBase'
 
 export interface OrchestratorInput {
   target: string
@@ -22,9 +28,11 @@ export interface ImpactAnalysis {
 
 export class QAOrchestrator {
   private client: Anthropic
+  private generator: ScenarioGenerator
 
   constructor() {
     this.client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
+    this.generator = new ScenarioGenerator()
   }
 
   async run(input: OrchestratorInput): Promise<void> {
@@ -67,39 +75,77 @@ Responda APENAS com o JSON.
     })
 
     const text = response.content[0].type === 'text' ? response.content[0].text : '{}'
-    return JSON.parse(text) as ImpactAnalysis
+    const json = text.match(/\{[\s\S]*\}/)?.[0] ?? '{}'
+    return JSON.parse(json) as ImpactAnalysis
   }
 
+  // Pipeline real: abre a tela → mapeia → gera cenários BDD (realimentados pela KB) → executa por passos
   private async generateAndExecuteScenarios(
     input: OrchestratorInput,
     impact: ImpactAnalysis
   ): Promise<void> {
-    const prompt = `
-Você é um QA Sênior especialista. Com base na análise de impacto abaixo, gere cenários de teste.
+    const module = impact.affectedModules[0] ?? 'aplicacao'
 
-Análise: ${JSON.stringify(maskObject(impact))}
-Ambiente: ${env.APP_ENV}
-${isProduction ? 'ATENÇÃO: Ambiente de produção — apenas testes passivos' : ''}
+    let browser: Browser | undefined
+    let context: BrowserContext | undefined
+    try {
+      browser = await chromium.launch()
+      context = await browser.newContext(this.contextOptions())
+      const page = await context.newPage()
 
-Gere cenários para:
-- Testes Positivos
-- Testes Negativos
-- Testes de Borda
-- Testes de Segurança (SQL Injection, XSS, CSRF, IDOR)
-- Testes de Regressão
-- Testes de API (status, contrato, autenticação)
+      logger.info(`Abrindo alvo para mapeamento: ${input.target}`)
+      await page.goto(input.target)
+      await page.waitForLoadState('domcontentloaded')
 
-Formato: JSON com array de cenários contendo { tipo, descricao, passos, criterioAceite }
-`
+      const screenMap = await new ScreenMapper(page).map()
 
-    const response = await this.client.messages.create({
-      model: CLAUDE_MODELS.DEFAULT,
-      max_tokens: 4000,
-      messages: [{ role: 'user', content: prompt }],
-    })
+      // Loop de aprendizado: prioriza cobertura dos bugs que já reincidiram neste módulo
+      const knownBugs = await this.recurringBugTitles(module)
+      if (knownBugs.length) {
+        logger.info(`KB — ${knownBugs.length} bug(s) reincidente(s) alimentando a geração de cenários`)
+      }
 
-    const text = response.content[0].type === 'text' ? response.content[0].text : '[]'
-    logger.info(`Cenários gerados com sucesso para ${input.target}`)
-    logger.debug(`Cenários: ${text}`)
+      const suite = await this.generator.generate({
+        screenMap,
+        module,
+        commitHash: input.commitHash,
+        prNumber: input.prNumber,
+        knownBugs,
+        businessContext: impact.recommendation,
+      })
+
+      const report = await new ScenarioRunner(page).runSuite(suite)
+      logger.info(
+        `Execução concluída — ${report.passed}/${report.total} passou(aram) | taxa ${report.passRate}` +
+          (report.featurePath ? ` | feature: ${report.featurePath}` : '')
+      )
+    } catch (err) {
+      logger.error('Falha no pipeline de geração/execução de cenários', err)
+      throw err
+    } finally {
+      await context?.close().catch(() => {})
+      await browser?.close().catch(() => {})
+    }
+  }
+
+  // Reaproveita uma sessão autenticada se houver storageState salvo (ex: SIGP)
+  private contextOptions() {
+    const candidate =
+      process.env.STORAGE_STATE ?? path.resolve('playwright', '.auth', 'sigp.json')
+    if (existsSync(candidate)) {
+      logger.info(`Reutilizando sessão autenticada: ${candidate}`)
+      return { storageState: candidate }
+    }
+    return {}
+  }
+
+  private async recurringBugTitles(module: string): Promise<string[]> {
+    try {
+      const bugs = await knowledgeBase.findRecurringBugs(module)
+      return bugs.map(b => `${b.title} (${b.category})`)
+    } catch (err) {
+      logger.warn(`KB indisponível — seguindo sem histórico de bugs (${String(err)})`)
+      return []
+    }
   }
 }

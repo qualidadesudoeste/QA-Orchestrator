@@ -13,16 +13,20 @@ test.describe('SIGP — Login', () => {
   })
 
   test('login positivo — credenciais válidas', async ({ page }) => {
+    const urlAntes = page.url()
     await preencherLogin(page, process.env.APP_USERNAME!, process.env.APP_PASSWORD!)
 
-    await page.waitForLoadState('networkidle')
+    // networkidle trava em ERPs Java com polling contínuo — aguarda URL mudar
+    await page.waitForURL((url) => !url.href.includes('open.do'), { timeout: 60_000 })
+      .catch(() => null)
 
-    // Não deve permanecer na tela de login
-    const aindaNoLogin = page.url().includes('open.do') || page.url().includes('login')
-    const erroVisivel = await page.locator('[class*="error" i], [class*="erro" i]').isVisible().catch(() => false)
+    const erroVisivel = await page.frames().reduce(async (acc, frame) => {
+      if (await acc) return true
+      return frame.locator('[class*="error" i], [class*="erro" i]').isVisible({ timeout: 500 }).catch(() => false)
+    }, Promise.resolve(false))
 
     expect(erroVisivel, 'Mensagem de erro não deve aparecer com credenciais válidas').toBeFalsy()
-    await expect(page).toHaveScreenshot('login-sucesso.png', { maxDiffPixelRatio: 0.1 }).catch(() => {})
+    await page.screenshot({ path: 'evidence/screenshots/login-sucesso.png', fullPage: true })
   })
 
   test('login negativo — senha incorreta', async ({ page }) => {
@@ -107,13 +111,15 @@ test.describe('SIGP — Login', () => {
   })
 
   test('tela de login — estrutura e acessibilidade', async ({ page }) => {
-    // Verifica existência de campos essenciais
-    const temCampoUsuario = await page.locator(
-      'input[name*="user" i], input[name*="login" i], input[name*="j_username"]'
+    // Formulário está dentro de iframe — busca no frame openform.do
+    const loginFrame = page.frames().find(f => f.url().includes('openform.do')) ?? page.mainFrame()
+
+    const temCampoUsuario = await loginFrame.locator(
+      'input[name="[REDACTED_SEL]"], input[name*="user" i], input[name*="login" i]'
     ).count() > 0
 
-    const temCampoSenha = await page.locator('input[type="password"]').count() > 0
-    const temBotaoSubmit = await page.locator(
+    const temCampoSenha = await loginFrame.locator('input[type="password"]').count() > 0
+    const temBotaoSubmit = await loginFrame.locator(
       'button[type="submit"], input[type="submit"], button:has-text("Entrar")'
     ).count() > 0
 
@@ -121,39 +127,58 @@ test.describe('SIGP — Login', () => {
     expect(temCampoSenha, 'Deve ter campo de senha').toBeTruthy()
     expect(temBotaoSubmit, 'Deve ter botão de submit').toBeTruthy()
 
-    // Labels para acessibilidade
-    const temLabels = await page.locator('label, [aria-label], [placeholder]').count() > 0
+    const temLabels = await loginFrame.locator('label, [aria-label], [placeholder]').count() > 0
     expect(temLabels, 'Campos devem ter labels ou aria-labels').toBeTruthy()
   })
 })
 
-// Helper interno — não repete lógica de seletor por todo o arquivo
+// Helper interno — busca campos em todos os frames (SIGP usa iframe para o formulário)
 async function preencherLogin(page: import('@playwright/test').Page, user: string, pass: string) {
   const userSelectors = [
+    'input[name="[REDACTED_SEL]"]', // SIGP confirmado
     'input[name="username"]', 'input[name="login"]', 'input[name="user"]',
     'input[name="j_username"]', 'input[id*="user" i]', 'input[id*="login" i]',
-    'input[placeholder*="usuário" i]',
   ]
   const passSelectors = [
+    'input[name="[REDACTED_SEL]"]', // SIGP confirmado
     'input[name="password"]', 'input[name="senha"]',
     'input[name="j_password"]', 'input[type="password"]',
   ]
-
-  for (const sel of userSelectors) {
-    const el = page.locator(sel).first()
-    if (await el.isVisible().catch(() => false)) { await el.fill(user); break }
-  }
-  for (const sel of passSelectors) {
-    const el = page.locator(sel).first()
-    if (await el.isVisible().catch(() => false)) { await el.fill(pass); break }
-  }
-
   const submitSelectors = [
     'button[type="submit"]', 'input[type="submit"]',
     'button:has-text("Entrar")', 'button:has-text("Login")', 'button:has-text("Acessar")',
   ]
-  for (const sel of submitSelectors) {
-    const el = page.locator(sel).first()
-    if (await el.isVisible().catch(() => false)) { await el.click(); break }
+
+  for (const frame of page.frames()) {
+    if (!frame.url() || frame.url() === 'about:blank') continue
+
+    let preencheu = false
+    for (const sel of userSelectors) {
+      const el = frame.locator(sel).first()
+      if (await el.isVisible({ timeout: 500 }).catch(() => false)) {
+        await el.fill(user)
+        preencheu = true
+        break
+      }
+    }
+    if (!preencheu) continue
+
+    for (const sel of passSelectors) {
+      const el = frame.locator(sel).first()
+      if (await el.isVisible({ timeout: 500 }).catch(() => false)) {
+        await el.fill(pass)
+        break
+      }
+    }
+
+    for (const sel of submitSelectors) {
+      const el = frame.locator(sel).first()
+      if (await el.isVisible({ timeout: 500 }).catch(() => false)) {
+        await el.click()
+        break
+      }
+    }
+
+    break // campos encontrados neste frame — não precisa continuar
   }
 }

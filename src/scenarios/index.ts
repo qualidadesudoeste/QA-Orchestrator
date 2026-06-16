@@ -1,3 +1,6 @@
 export { ScenarioGenerator } from './generator'
 export { ScenarioRunner } from './runner'
-export type { TestScenario, TestStep, ScenarioSuite, ScenarioResult } from './types'
+export type { RunReport } from './runner'
+export { BddPlaywrightRunner, scenarioToBdd, suiteToFeature, stepToGherkin, classifyVerb } from './bdd'
+export type { BddScenario, BddStepResult } from './bdd'
+export type { TestScenario, TestStep, ScenarioSuite, ScenarioResult, BddKeyword } from './types'

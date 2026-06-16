@@ -15,17 +15,21 @@ build/
 # Playwright auth state (contains session tokens — never commit)
 playwright/.auth/
 
-# Test outputs
+# Test outputs / evidência (screenshots de telas internas — nunca commitar)
 allure-results/
 allure-report/
-evidence/screenshots/
-evidence/videos/
-evidence/logs/
-evidence/traces/
+evidence/
+artifacts/
 reports/*.json
 reports/*.html
 playwright-report/
 test-results/
+
+# Exports de sistemas Maker (estrutura/SQL/regras internas — nunca commitar)
+*.FRZ
+*.frz
+*.jar
+*.jar.zip
 
 # Prisma
 prisma/migrations/

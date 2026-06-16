@@ -2,10 +2,11 @@ import type { Page } from '@playwright/test'
 import { logger } from '@utils/logger'
 import { testData } from '@utils/testData'
 import { maskObject } from '@utils/dataMasking'
-import { isProduction } from '@config/environments'
+import { env, isProduction } from '@config/environments'
 import { ScreenMapper } from './screenMapper'
 import { FormTester } from './formTester'
 import { GridHandler } from './gridHandler'
+import { findInFrames } from './frameUtils'
 import type { ScreenMap } from './screenMapper'
 import type { FormTestResult } from './formTester'
 import type { GridTestResult } from './gridHandler'
@@ -48,7 +49,7 @@ export class PageActions {
     const url = this.page.url()
     logger.info(`Executando teste completo da página: ${url}`)
 
-    await this.page.waitForLoadState('networkidle')
+    await this.page.waitForLoadState('domcontentloaded')
 
     const screenMap = await this.mapper.map()
 
@@ -93,7 +94,7 @@ export class PageActions {
 
     // CREATE
     const createBtn = this.findButton(map, 'submit')
-    if (createBtn) results.push(await this.testCreate(map, createBtn))
+    if (createBtn) results.push(await this.testCreate(map, createBtn.selector, createBtn.frameUrl))
 
     // UPDATE — needs existing record in grid
     if (map.grids.some(g => g.rowCount > 0)) {
@@ -121,15 +122,19 @@ export class PageActions {
     }
   }
 
-  private async testCreate(map: ScreenMap, submitSelector: string): Promise<CrudResult> {
+  private async testCreate(map: ScreenMap, submitSelector: string, frameUrl?: string): Promise<CrudResult> {
     try {
       // Find and click a "New/Add" button first if exists
-      const newBtn = this.page.locator(
-        'button:has-text("Novo"), button:has-text("Adicionar"), button:has-text("Cadastrar"), button:has-text("New"), [aria-label*="novo"]'
-      ).first()
+      const newBtn = await findInFrames(this.page, [
+        'button:has-text("Novo")',
+        'button:has-text("Adicionar")',
+        'button:has-text("Cadastrar")',
+        'button:has-text("New")',
+        '[aria-label*="novo" i]',
+      ])
 
-      if ((await newBtn.count()) > 0) {
-        await newBtn.click()
+      if (newBtn) {
+        await newBtn.locator.click()
         await this.page.waitForTimeout(600)
       }
 
@@ -138,21 +143,21 @@ export class PageActions {
       for (const field of map.fields) {
         if (field.type === 'submit' || field.type === 'button') continue
         if (field.type === 'email') {
-          await this.page.locator(field.selector).fill(person.email).catch(() => {})
+          await this.locatorFor(field.selector, field.frameUrl).fill(person.email).catch(() => {})
         } else if (field.type === 'tel') {
-          await this.page.locator(field.selector).fill(person.phone).catch(() => {})
+          await this.locatorFor(field.selector, field.frameUrl).fill(person.phone).catch(() => {})
         } else if (field.type === 'select') {
-          await this.page.locator(field.selector).selectOption({ index: 1 }).catch(() => {})
+          await this.locatorFor(field.selector, field.frameUrl).selectOption({ index: 1 }).catch(() => {})
         } else if (field.type === 'checkbox') {
-          await this.page.locator(field.selector).check().catch(() => {})
+          await this.locatorFor(field.selector, field.frameUrl).check().catch(() => {})
         } else {
           const value = testData.text.short()
-          await this.page.locator(field.selector).fill(value).catch(() => {})
+          await this.locatorFor(field.selector, field.frameUrl).fill(value).catch(() => {})
         }
       }
 
       const urlBefore = this.page.url()
-      await this.page.locator(submitSelector).click()
+      await this.locatorFor(submitSelector, frameUrl).click()
       await this.page.waitForTimeout(1000)
 
       const urlAfter = this.page.url()
@@ -187,7 +192,7 @@ export class PageActions {
       const textField = map.fields.find(f => f.type === 'text' || f.type === 'textarea')
       if (textField) {
         const newValue = testData.text.short()
-        await this.page.locator(textField.selector).fill(newValue)
+        await this.locatorFor(textField.selector, textField.frameUrl).fill(newValue)
       }
 
       const saveBtn = this.page.locator('button[type="submit"], button:has-text("Salvar"), button:has-text("Confirmar")').first()
@@ -212,7 +217,7 @@ export class PageActions {
 
     for (const filter of map.filters.slice(0, 3)) {
       try {
-        await this.page.locator(filter.selector).fill(testData.text.short())
+        await this.locatorFor(filter.selector, filter.frameUrl).fill(testData.text.short())
         await this.page.keyboard.press('Enter')
         await this.page.waitForTimeout(600)
 
@@ -223,7 +228,7 @@ export class PageActions {
         })
 
         // Clear filter
-        await this.page.locator(filter.selector).clear()
+        await this.locatorFor(filter.selector, filter.frameUrl).clear()
         await this.page.keyboard.press('Enter')
         await this.page.waitForTimeout(400)
       } catch (err) {
@@ -237,17 +242,23 @@ export class PageActions {
   private async captureEvidence(): Promise<string | undefined> {
     try {
       const filename = `screenshot-${Date.now()}.png`
-      const path = `evidence/screenshots/${filename}`
-      await this.page.screenshot({ path, fullPage: true })
-      logger.info(`Evidência capturada: ${path}`)
-      return path
+      const filePath = `${env.EVIDENCE_DIR}/screenshots/${filename}`
+      await this.page.screenshot({ path: filePath, fullPage: true })
+      logger.info(`Evidência capturada: ${filePath}`)
+      return filePath
     } catch {
       return undefined
     }
   }
 
-  private findButton(map: ScreenMap, action: string): string | undefined {
-    return map.buttons.find(b => b.action === action)?.selector
+  private findButton(map: ScreenMap, action: string): { selector: string; frameUrl?: string } | undefined {
+    const button = map.buttons.find(b => b.action === action)
+    return button ? { selector: button.selector, frameUrl: button.frameUrl } : undefined
+  }
+
+  private locatorFor(selector: string, frameUrl?: string) {
+    const frame = frameUrl ? this.page.frames().find(f => f.url() === frameUrl) : undefined
+    return frame ? frame.locator(selector).first() : this.page.locator(selector).first()
   }
 
   private logSummary(summary: PageTestSummary): void {

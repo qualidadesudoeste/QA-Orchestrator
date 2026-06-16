@@ -15,9 +15,9 @@ export default defineConfig({
   workers: process.env.CI ? 2 : 1,
 
   reporter: [
-    ['html', { outputFolder: 'reports/html', open: 'never' }],
-    ['allure-playwright', { outputFolder: 'allure-results', detail: true }],
-    ['json', { outputFile: 'reports/results.json' }],
+    ['html', { outputFolder: 'artifacts/reports/html', open: 'never' }],
+    ['allure-playwright', { outputFolder: 'artifacts/allure-results', detail: true }],
+    ['json', { outputFile: 'artifacts/reports/results.json' }],
     ['list'],
   ],
 
@@ -62,31 +62,11 @@ export default defineConfig({
       testDir: './tests/sigp/api',
     },
 
-    // ── Suítes genéricas (outros sistemas) ────────────────────
-    {
-      name: 'functional',
-      testDir: './tests/functional',
-      use: { ...devices['Desktop Chrome'] },
-    },
-    {
-      name: 'api',
-      testDir: './tests/api',
-    },
-    {
-      name: 'security',
-      testDir: './tests/security',
-      use: { ...devices['Desktop Chrome'] },
-    },
-    {
-      name: 'regression',
-      testDir: './tests/regression',
-      use: { ...devices['Desktop Chrome'] },
-    },
-    {
-      name: 'integration',
-      testDir: './tests/integration',
-    },
+    // ── Outros sistemas ───────────────────────────────────────
+    // Convenção: cada sistema alvo ganha sua própria pasta tests/<sistema>/
+    // com subpastas por categoria (functional, api, security, ...) e seus
+    // próprios projetos aqui, no mesmo molde dos projetos sigp-* acima.
   ],
 
-  outputDir: 'evidence/',
+  outputDir: 'artifacts/evidence/test-results',
 })

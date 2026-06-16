@@ -1,0 +1,60 @@
+/**
+ * CLI simples para inspecionar a memória de perfis aprendidos.
+ *
+ * Uso:
+ *   ts-node src/discovery/profileCli.ts list
+ *   ts-node src/discovery/profileCli.ts show <id>
+ *   ts-node src/discovery/profileCli.ts seed-sigp
+ *
+ * 100% offline — não depende de env, banco ou servidor.
+ */
+
+import { profileStore } from './systemProfile'
+import { seedSigpProfile } from './seedSigp'
+
+function list(): void {
+  const profiles = profileStore.list()
+  if (profiles.length === 0) {
+    console.log('Nenhum perfil aprendido ainda. Rode: npm run profile:seed-sigp')
+    return
+  }
+  console.log(`\n${profiles.length} sistema(s) na memória do agente:\n`)
+  for (const p of profiles) {
+    const login = p.login ? `login ✓ (confiança ${p.login.confidence})` : 'login ✗'
+    console.log(`  • ${p.name}`)
+    console.log(`    id: ${p.id} | tipo: ${p.kind} | ${login} | módulos: ${p.modules.length} | aprendizados: ${p.learnedRuns}`)
+    console.log(`    url: ${p.baseUrl}`)
+    console.log(`    atualizado: ${p.updatedAt}\n`)
+  }
+}
+
+function show(id?: string): void {
+  if (!id) {
+    console.error('Informe o id. Ex.: npm run profile:show -- sigp-[REDACTED_HOST]-com-br')
+    process.exit(1)
+  }
+  const profile = profileStore.load(id)
+  if (!profile) {
+    console.error(`Perfil "${id}" não encontrado. Rode "list" para ver os disponíveis.`)
+    process.exit(1)
+  }
+  console.log(JSON.stringify(profile, null, 2))
+}
+
+const [command, arg] = process.argv.slice(2)
+
+switch (command) {
+  case 'list':
+    list()
+    break
+  case 'show':
+    show(arg)
+    break
+  case 'seed-sigp': {
+    const saved = seedSigpProfile()
+    console.log(`Perfil SIGP salvo na memória: ${saved.id} (aprendizados=${saved.learnedRuns})`)
+    break
+  }
+  default:
+    console.log('Comandos: list | show <id> | seed-sigp')
+}

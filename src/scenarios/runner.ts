@@ -1,10 +1,12 @@
 import type { Page } from '@playwright/test'
+import { promises as fs } from 'fs'
+import path from 'path'
 import { logger } from '@utils/logger'
 import { isProduction } from '@config/environments'
-import { FormTester } from '@tools/playwright/formTester'
-import { GridHandler } from '@tools/playwright/gridHandler'
-import { PageActions } from '@tools/playwright/pageActions'
 import { ScreenMapper } from '@tools/playwright/screenMapper'
+import type { ScreenMap } from '@tools/playwright/screenMapper'
+import { BddPlaywrightRunner, suiteToFeature } from './bdd'
+import type { BddStepResult } from './bdd'
 import type { TestScenario, ScenarioSuite, ScenarioResult } from './types'
 
 export interface RunReport {
@@ -18,20 +20,19 @@ export interface RunReport {
   failed: number
   skipped: number
   passRate: string
+  featurePath?: string
   scenarios: TestScenario[]
 }
 
+// Indicadores de vazamento de erro de banco/stack — usados nas asserções de segurança
+const LEAK_PATTERN = /sql syntax|syntax error|ora-\d|mysql|pg_|sqlstate|stack ?trace|unhandled exception/i
+
 export class ScenarioRunner {
   private mapper: ScreenMapper
-  private formTester: FormTester
-  private gridHandler: GridHandler
-  private pageActions: PageActions
+  private xssTriggered = false
 
   constructor(private page: Page) {
     this.mapper = new ScreenMapper(page)
-    this.formTester = new FormTester(page)
-    this.gridHandler = new GridHandler(page)
-    this.pageActions = new PageActions(page)
   }
 
   async runSuite(suite: ScenarioSuite): Promise<RunReport> {
@@ -40,17 +41,23 @@ export class ScenarioRunner {
 
     logger.info(`Iniciando suíte: ${suite.id} | ${suite.scenarios.length} cenário(s) | módulo: ${suite.module}`)
 
-    // Navigate to the target URL once
+    // Qualquer dialog (alert/confirm) durante a suíte indica possível execução de XSS
+    this.xssTriggered = false
+    this.page.on('dialog', async dialog => {
+      this.xssTriggered = true
+      await dialog.dismiss().catch(() => {})
+    })
+
     await this.page.goto(suite.url)
-    await this.page.waitForLoadState('networkidle')
+    await this.page.waitForLoadState('domcontentloaded')
 
     const screenMap = await this.mapper.map()
+    const bddRunner = new BddPlaywrightRunner(this.page, screenMap)
 
     let passed = 0
     let failed = 0
     let skipped = 0
 
-    // Group scenarios: security and write ops last; skip write ops in production
     const ordered = this.prioritizeScenarios(suite.scenarios)
 
     for (const scenario of ordered) {
@@ -68,7 +75,7 @@ export class ScenarioRunner {
 
       const t0 = Date.now()
       try {
-        const result = await this.runScenario(scenario, screenMap)
+        const result = await this.runScenario(scenario, bddRunner, screenMap)
         scenario.result = { ...result, duration: Date.now() - t0 }
         result.passed ? passed++ : failed++
       } catch (err) {
@@ -80,6 +87,8 @@ export class ScenarioRunner {
     }
 
     const durationMs = Date.now() - start
+    const featurePath = await this.writeFeature(suite)
+
     const report: RunReport = {
       suiteId: suite.id,
       module: suite.module,
@@ -91,6 +100,7 @@ export class ScenarioRunner {
       failed,
       skipped,
       passRate: `${((passed / (passed + failed || 1)) * 100).toFixed(1)}%`,
+      featurePath,
       scenarios: suite.scenarios,
     }
 
@@ -98,163 +108,75 @@ export class ScenarioRunner {
     return report
   }
 
+  // Execução agora é dirigida pelos passos Dado/Quando/Então do cenário.
+  // O `type` apenas enriquece a asserção final (ex: segurança verifica vazamento).
   private async runScenario(
     scenario: TestScenario,
-    screenMap: import('@tools/playwright/screenMapper').ScreenMap
+    bddRunner: BddPlaywrightRunner,
+    screenMap: ScreenMap
   ): Promise<ScenarioResult> {
-    switch (scenario.type) {
-      case 'POSITIVO':
-        return this.runPositive(scenario, screenMap)
-      case 'NEGATIVO':
-        return this.runNegative(scenario, screenMap)
-      case 'BORDA':
-        return this.runEdge(scenario, screenMap)
-      case 'SEGURANCA':
-        return this.runSecurity(screenMap)
-      case 'EXPLORATORIO':
-        return this.runExploratory()
-      case 'REGRESSAO':
-        return this.runRegression(scenario, screenMap)
-      case 'API':
-        return { passed: true, detail: 'Cenário API — executar via tests/api/', duration: 0 }
-      case 'INTEGRACAO':
-        return { passed: true, detail: 'Cenário de integração — requer setup adicional', duration: 0 }
-      case 'USABILIDADE':
-        return this.runUsability()
-      case 'PERMISSAO':
-        return this.runPermission()
-      default:
-        return { passed: true, detail: `Tipo ${scenario.type} sem executor mapeado`, duration: 0 }
-    }
+    const stepResults = await bddRunner.runSteps(scenario)
+    return this.assertScenario(scenario, stepResults, screenMap)
   }
 
-  private async runPositive(
+  private async assertScenario(
     scenario: TestScenario,
-    screenMap: import('@tools/playwright/screenMapper').ScreenMap
+    stepResults: BddStepResult[],
+    _screenMap: ScreenMap
   ): Promise<ScenarioResult> {
-    const summary = await this.pageActions.runFullPageTest()
-    const crudPassed = summary.crudResults.filter(r => r.operation === 'CREATE' && r.passed).length > 0
-    return {
-      passed: crudPassed || summary.crudResults.every(r => r.passed),
-      detail: crudPassed ? 'Fluxo positivo executado com sucesso' : 'Fluxo positivo com falhas em CREATE',
-      screenshotPath: summary.screenshotPath,
-    }
-  }
+    const failedSteps = stepResults.filter(s => !s.passed)
+    let passed = failedSteps.length === 0
+    let detail = passed
+      ? `${stepResults.length} passo(s) BDD executado(s) — ${this.bddSummary(stepResults)}`
+      : `Falha em: ${failedSteps.map(s => s.text).join(' | ')}`
 
-  private async runNegative(
-    scenario: TestScenario,
-    screenMap: import('@tools/playwright/screenMapper').ScreenMap
-  ): Promise<ScenarioResult> {
-    const formResults = await this.formTester.testAll(screenMap)
-    const requiredTests = formResults.filter(r => r.scenario.includes('Obrigatório') || r.scenario.includes('Obrigatoriedade'))
-    const allPass = requiredTests.every(r => r.passed)
-    return {
-      passed: allPass,
-      detail: allPass
-        ? `${requiredTests.length} validação(ões) negativa(s) passaram`
-        : `FALHA: ${requiredTests.filter(r => !r.passed).map(r => r.field).join(', ')} não validaram`,
-    }
-  }
-
-  private async runEdge(
-    scenario: TestScenario,
-    screenMap: import('@tools/playwright/screenMapper').ScreenMap
-  ): Promise<ScenarioResult> {
-    const formResults = await this.formTester.testAll(screenMap)
-    const edgeTests = formResults.filter(r =>
-      r.scenario.includes('máximo') || r.scenario.includes('Caracteres')
-    )
-    const allPass = edgeTests.length === 0 || edgeTests.every(r => r.passed)
-    return {
-      passed: allPass,
-      detail: allPass ? 'Testes de borda aprovados' : `${edgeTests.filter(r => !r.passed).length} borda(s) falharam`,
-    }
-  }
-
-  private async runSecurity(
-    screenMap: import('@tools/playwright/screenMapper').ScreenMap
-  ): Promise<ScenarioResult> {
-    const formResults = await this.formTester.testAll(screenMap)
-    const secTests = formResults.filter(r =>
-      r.scenario.includes('SQL') || r.scenario.includes('XSS')
-    )
-    const vulns = secTests.filter(r => !r.passed)
-    return {
-      passed: vulns.length === 0,
-      detail: vulns.length === 0
-        ? `Nenhuma vulnerabilidade encontrada (${secTests.length} payload(s) testado(s))`
-        : `VULNERABILIDADE: ${vulns.map(r => r.scenario).join(' | ')}`,
-    }
-  }
-
-  private async runExploratory(): Promise<ScenarioResult> {
-    try {
-      await this.page.waitForLoadState('networkidle')
-      await this.page.screenshot({ path: `evidence/screenshots/exploratory-${Date.now()}.png`, fullPage: true })
-      const url = this.page.url()
-      return { passed: true, detail: `Exploração registrada: ${url}`, screenshotPath: `evidence/screenshots/exploratory-${Date.now()}.png` }
-    } catch (err) {
-      return { passed: false, detail: String(err) }
-    }
-  }
-
-  private async runRegression(
-    scenario: TestScenario,
-    screenMap: import('@tools/playwright/screenMapper').ScreenMap
-  ): Promise<ScenarioResult> {
-    // Regression = re-run positive + negative to confirm no breakage
-    const pos = await this.runPositive(scenario, screenMap)
-    const neg = await this.runNegative(scenario, screenMap)
-    const passed = pos.passed && neg.passed
-    return {
-      passed,
-      detail: passed ? 'Regressão aprovada — fluxos positivo e negativo OK' : `Regressão FALHOU — positivo:${pos.passed} negativo:${neg.passed}`,
-    }
-  }
-
-  private async runUsability(): Promise<ScenarioResult> {
-    try {
-      // Check basic usability signals
-      const checks = await Promise.all([
-        this.page.locator('h1, h2, [role="heading"]').count().then(n => ({ check: 'heading', ok: n > 0 })),
-        this.page.locator('button, a, [role="button"]').count().then(n => ({ check: 'interactive', ok: n > 0 })),
-        this.page.locator('[aria-label], [aria-labelledby], label').count().then(n => ({ check: 'accessibility-labels', ok: n > 0 })),
-        this.page.locator('img:not([alt])').count().then(n => ({ check: 'img-alt', ok: n === 0 })),
-      ])
-
-      const failed = checks.filter(c => !c.ok)
-      return {
-        passed: failed.length === 0,
-        detail: failed.length === 0
-          ? 'Verificações básicas de usabilidade aprovadas'
-          : `Atenção: ${failed.map(c => c.check).join(', ')}`,
+    // Enriquecimento por tipo: segurança não pode vazar erro de banco nem executar script
+    if (scenario.type === 'SEGURANCA') {
+      const leak = await this.scanForLeak()
+      if (leak) {
+        passed = false
+        detail = `VULNERABILIDADE: ${leak}`
+      } else if (passed) {
+        detail = `Nenhuma vulnerabilidade detectada — ${detail}`
       }
-    } catch (err) {
-      return { passed: false, detail: String(err) }
     }
+
+    return { passed, detail }
   }
 
-  private async runPermission(): Promise<ScenarioResult> {
+  private bddSummary(steps: BddStepResult[]): string {
+    const count = (k: BddStepResult['keyword']) => steps.filter(s => s.keyword === k).length
+    return `Dado:${count('DADO')} Quando:${count('QUANDO') + count('E')} Então:${count('ENTAO')}`
+  }
+
+  // Verifica execução de XSS (dialog) e vazamento de erros de banco no corpo da página
+  private async scanForLeak(): Promise<string | null> {
+    if (this.xssTriggered) return 'XSS executado (dialog disparado na página)'
     try {
-      // Try accessing the page without expected auth headers
-      const response = await this.page.request.get(this.page.url(), {
-        headers: { Authorization: '' },
-        failOnStatusCode: false,
-      })
+      const body = (await this.page.locator('body').textContent()) ?? ''
+      if (LEAK_PATTERN.test(body)) return 'erro de banco/stack trace exposto na resposta'
+    } catch {
+      // ignora erro transitório de leitura
+    }
+    return null
+  }
 
-      const isProtected = response.status() === 401 || response.status() === 403
-      return {
-        passed: isProtected,
-        detail: isProtected
-          ? `Endpoint protegido (HTTP ${response.status()})`
-          : `ATENÇÃO: endpoint pode estar desprotegido (HTTP ${response.status()})`,
-      }
+  private async writeFeature(suite: ScenarioSuite): Promise<string | undefined> {
+    try {
+      const dir = path.resolve('evidence', 'features')
+      await fs.mkdir(dir, { recursive: true })
+      const safe = suite.module.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()
+      const file = path.join(dir, `${safe || 'suite'}-${suite.id}.feature`)
+      await fs.writeFile(file, suiteToFeature(suite), 'utf-8')
+      logger.info(`Arquivo .feature (Gherkin) gerado: ${file}`)
+      return file
     } catch (err) {
-      return { passed: false, detail: String(err) }
+      logger.warn(`Não foi possível gravar o .feature: ${String(err)}`)
+      return undefined
     }
   }
 
-  // Security and destructive scenarios run last; HIGH priority runs first
+  // Cenários de segurança/destrutivos rodam por último; HIGH primeiro
   private prioritizeScenarios(scenarios: TestScenario[]): TestScenario[] {
     const order: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 }
     const typeOrder: Record<string, number> = {

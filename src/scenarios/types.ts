@@ -4,7 +4,11 @@ export type ScenarioType = (typeof SCENARIO_TYPES)[number]
 export type RiskLevel = keyof typeof RISK_LEVELS
 export type SeverityLevel = keyof typeof SEVERITY
 
+// BDD: fase do passo no formato Gherkin pt-BR (Dado / Quando / Então / E)
+export type BddKeyword = 'DADO' | 'QUANDO' | 'ENTAO' | 'E'
+
 export interface TestStep {
+  keyword: BddKeyword
   order: number
   action: string
   target?: string
@@ -32,7 +36,7 @@ export interface TestScenario {
 export interface ScenarioResult {
   passed: boolean
   detail: string
-  duration: number
+  duration?: number
   screenshotPath?: string
   error?: string
 }

@@ -102,7 +102,7 @@ export class MySQLAdapter implements DbAdapter {
     return parseInt(rows[0]?.count ?? '0') > 0
   }
 
-  async query<T = unknown>(sql: string, params?: unknown[]): Promise<T[]> {
+  async query<T = unknown>(sql: string, params?: any[]): Promise<T[]> {
     const [rows] = await this.pool.execute(sql, params)
     return rows as T[]
   }

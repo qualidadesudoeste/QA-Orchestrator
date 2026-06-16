@@ -4,7 +4,7 @@ import { CLAUDE_MODELS, SCENARIO_TYPES } from '@config/constants'
 import { logger } from '@utils/logger'
 import { maskObject } from '@utils/dataMasking'
 import type { ScreenMap } from '@tools/playwright/screenMapper'
-import type { TestScenario, ScenarioSuite, TestStep } from './types'
+import type { TestScenario, ScenarioSuite, TestStep, BddKeyword } from './types'
 
 interface GeneratorInput {
   screenMap: ScreenMap
@@ -24,7 +24,7 @@ interface ClaudeScenario {
   risk: string
   automatable: boolean
   tags: string[]
-  steps: { order: number; action: string; target?: string; value?: string; expectedOutcome?: string }[]
+  steps: { keyword?: string; order: number; action: string; target?: string; value?: string; expectedOutcome?: string }[]
   expectedResult: string
   testData?: Record<string, unknown>
 }
@@ -102,7 +102,20 @@ INSTRUÇÕES:
 5. Se houver exportação, gere cenário para ela.
 6. Priorize HIGH para fluxos críticos de negócio e segurança.
 7. Marque automatable: false apenas para cenários que requerem julgamento humano.
-8. Os passos (steps) devem ser concretos e referir os elementos da tela pelo label/texto.
+8. Os passos (steps) devem ser concretos e referir os elementos da tela pelo label/texto exatos mostrados acima.
+9. ESTRUTURA BDD OBRIGATÓRIA — cada step tem um campo "keyword" com a fase do cenário:
+   - "DADO"   = pré-condição / estado inicial (ex: estar numa tela, estar autenticado)
+   - "QUANDO" = ação do usuário (preencher campo, clicar botão, selecionar opção)
+   - "ENTAO"  = resultado observável a verificar (mensagem, redirecionamento, valor exibido)
+   - "E"      = continuação da fase anterior (vários DADO/QUANDO/ENTAO seguidos)
+   Todo cenário DEVE começar com pelo menos um "DADO", ter "QUANDO" e terminar com pelo menos um "ENTAO".
+10. Os cenários serão executados por Playwright, então cada step precisa ter "target" (e "value" quando preencher) claros.
+
+VERBOS DE AÇÃO RECONHECIDOS pelo executor (use-os no campo "action"):
+- "navegar" / "acessar"  → carregar/abrir a tela (fase DADO)
+- "preencher" / "informar" → digitar em um campo (fase QUANDO; exige target=label do campo e value)
+- "clicar" / "selecionar"  → acionar botão/link (fase QUANDO; target=texto do botão)
+- "verificar" / "visualizar" / "validar" → conferir resultado (fase ENTAO; target=texto esperado)
 
 RETORNE APENAS um array JSON válido com o seguinte formato por item:
 {
@@ -114,9 +127,10 @@ RETORNE APENAS um array JSON válido com o seguinte formato por item:
   "automatable": true,
   "tags": ["formulario", "cadastro"],
   "steps": [
-    { "order": 1, "action": "navegar", "target": "URL da tela", "expectedOutcome": "Tela carregada" },
-    { "order": 2, "action": "preencher", "target": "Nome do campo", "value": "valor_teste" },
-    { "order": 3, "action": "clicar", "target": "Texto do botão", "expectedOutcome": "Resultado esperado" }
+    { "keyword": "DADO", "order": 1, "action": "navegar", "target": "URL da tela", "expectedOutcome": "Tela carregada" },
+    { "keyword": "QUANDO", "order": 2, "action": "preencher", "target": "Nome do campo", "value": "valor_teste" },
+    { "keyword": "E", "order": 3, "action": "clicar", "target": "Texto do botão" },
+    { "keyword": "ENTAO", "order": 4, "action": "verificar", "target": "Mensagem de sucesso esperada", "expectedOutcome": "Resultado esperado" }
   ],
   "expectedResult": "Descrição do resultado esperado ao final",
   "testData": { "campo": "valor" }
@@ -151,13 +165,22 @@ Gere entre 15 e 25 cenários, cobrindo todos os tipos relevantes para esta tela.
       ? (s.risk as TestScenario['risk'])
       : 'MEDIUM'
 
+    const steps: TestStep[] = s.steps.map((step, i) => ({
+      keyword: this.normalizeKeyword(step.keyword) ?? inferKeyword(step.action, i),
+      order: step.order ?? i + 1,
+      action: step.action,
+      target: step.target,
+      value: step.value,
+      expectedOutcome: step.expectedOutcome,
+    }))
+
     return {
       id: `SCN-${String(++this.idCounter).padStart(4, '0')}`,
       type,
       title: s.title,
       description: s.description,
       module,
-      steps: s.steps as TestStep[],
+      steps,
       expectedResult: s.expectedResult,
       testData: s.testData,
       priority: s.priority ?? 'MEDIUM',
@@ -165,6 +188,16 @@ Gere entre 15 e 25 cenários, cobrindo todos os tipos relevantes para esta tela.
       automatable: s.automatable ?? true,
       tags: s.tags ?? [],
     }
+  }
+
+  private normalizeKeyword(raw?: string): BddKeyword | undefined {
+    if (!raw) return undefined
+    const k = raw.trim().toUpperCase()
+    if (k === 'DADO' || k === 'GIVEN') return 'DADO'
+    if (k === 'QUANDO' || k === 'WHEN') return 'QUANDO'
+    if (k === 'ENTAO' || k === 'ENTÃO' || k === 'THEN') return 'ENTAO'
+    if (k === 'E' || k === 'AND') return 'E'
+    return undefined
   }
 
   private buildSuite(input: GeneratorInput, scenarios: TestScenario[]): ScenarioSuite {
@@ -202,4 +235,14 @@ Gere entre 15 e 25 cenários, cobrindo todos os tipos relevantes para esta tela.
     logger.info(`Tipos — ${typeSummary}`)
     logger.info(`Prioridade — HIGH:${byPriority.HIGH} MEDIUM:${byPriority.MEDIUM} LOW:${byPriority.LOW}`)
   }
+}
+
+// Fallback quando o modelo não informa a keyword: infere a fase pela ação.
+// O 1º passo sem pista vira DADO (pré-condição); demais, QUANDO.
+function inferKeyword(action: string, index: number): BddKeyword {
+  const a = action.toLowerCase()
+  if (/navegar|acessar|abrir|login|autentic|estar|dado/.test(a)) return 'DADO'
+  if (/verificar|validar|visualizar|exibir|conferir|deve|esperar|then|entao|então/.test(a)) return 'ENTAO'
+  if (/preencher|informar|digitar|clicar|selecionar|acionar|enviar|when|quando/.test(a)) return 'QUANDO'
+  return index === 0 ? 'DADO' : 'QUANDO'
 }

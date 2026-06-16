@@ -74,16 +74,18 @@ export class KnowledgeBase {
   }
 
   async getCriticalFlows(): Promise<KnowledgeEntry[]> {
-    return prisma.knowledgeEntry.findMany({
+    const records = await prisma.knowledgeEntry.findMany({
       where: { flowType: 'CRITICAL' },
-    }) as Promise<KnowledgeEntry[]>
+    })
+    return records.map(this.deserializeKnowledge)
   }
 
   async saveKnowledge(entry: KnowledgeEntry): Promise<void> {
+    const data = this.serializeKnowledge(entry)
     await prisma.knowledgeEntry.upsert({
       where: { module: entry.module },
-      update: entry,
-      create: entry,
+      update: data,
+      create: data,
     })
   }
 
@@ -101,6 +103,24 @@ export class KnowledgeBase {
       ...record,
       steps: JSON.parse(record.steps || '[]'),
       evidencePaths: JSON.parse(record.evidencePaths || '[]'),
+    }
+  }
+
+  private serializeKnowledge(entry: KnowledgeEntry) {
+    return {
+      ...entry,
+      businessRules: JSON.stringify(entry.businessRules),
+      knownIssues: JSON.stringify(entry.knownIssues),
+    }
+  }
+
+  private deserializeKnowledge(record: any): KnowledgeEntry {
+    return {
+      module: record.module,
+      flowType: record.flowType,
+      description: record.description,
+      businessRules: JSON.parse(record.businessRules || '[]'),
+      knownIssues: JSON.parse(record.knownIssues || '[]'),
     }
   }
 }

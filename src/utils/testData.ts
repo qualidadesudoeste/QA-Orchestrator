@@ -5,7 +5,7 @@ export const testData = {
   person: () => ({
     name: faker.person.fullName(),
     email: faker.internet.email(),
-    phone: faker.phone.number('(##) #####-####'),
+    phone: faker.phone.number({ style: 'national' }),
     cpf: generateFakeCPF(),
     birthDate: faker.date.birthdate({ min: 18, max: 80, mode: 'age' }),
   }),
@@ -14,7 +14,7 @@ export const testData = {
     name: faker.company.name(),
     cnpj: generateFakeCNPJ(),
     email: faker.internet.email(),
-    phone: faker.phone.number('(##) ####-####'),
+    phone: faker.phone.number({ style: 'national' }),
   }),
 
   address: () => ({

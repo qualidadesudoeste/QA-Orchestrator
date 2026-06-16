@@ -1,11 +1,13 @@
 import type { Page, Locator } from '@playwright/test'
 import { logger } from '@utils/logger'
+import { activeFrames, countVisibleInFrames } from './frameUtils'
 
 export interface FieldElement {
   label: string
   selector: string
   type: string
   required: boolean
+  frameUrl?: string
   placeholder?: string
   maxLength?: number
 }
@@ -14,6 +16,7 @@ export interface ButtonElement {
   text: string
   selector: string
   action: 'submit' | 'cancel' | 'delete' | 'edit' | 'export' | 'import' | 'filter' | 'other'
+  frameUrl?: string
 }
 
 export interface GridColumn {
@@ -27,18 +30,21 @@ export interface GridElement {
   columns: GridColumn[]
   rowCount: number
   hasPagination: boolean
+  frameUrl?: string
 }
 
 export interface TabElement {
   label: string
   selector: string
   active: boolean
+  frameUrl?: string
 }
 
 export interface FilterElement {
   label: string
   selector: string
   type: string
+  frameUrl?: string
 }
 
 export interface ScreenMap {
@@ -76,7 +82,7 @@ export class ScreenMapper {
     const hasExport = buttons.some(b => b.action === 'export')
     const hasImport = buttons.some(b => b.action === 'import')
     const hasPagination = grids.some(g => g.hasPagination)
-    const hasModal = (await this.page.locator('[role="dialog"], .modal, [class*="modal"]').count()) > 0
+    const hasModal = (await countVisibleInFrames(this.page, ['[role="dialog"], .modal, [class*="modal"]'])) > 0
 
     const map: ScreenMap = {
       url,
@@ -103,40 +109,45 @@ export class ScreenMapper {
   private async mapFields(): Promise<FieldElement[]> {
     const fields: FieldElement[] = []
 
-    const inputs = this.page.locator(
-      'input:not([type="hidden"]):not([type="submit"]):not([type="button"]), textarea, select'
-    )
-    const count = await inputs.count()
+    for (const { frame, frameUrl } of await activeFrames(this.page)) {
+      const inputs = frame.locator(
+        'input:not([type="hidden"]):not([type="submit"]):not([type="button"]), textarea, select'
+      )
+      const count = await inputs.count()
 
-    for (let i = 0; i < count; i++) {
-      const el = inputs.nth(i)
-      const id = await el.getAttribute('id')
-      const name = await el.getAttribute('name')
-      const type = (await el.getAttribute('type')) ?? 'text'
-      const placeholder = (await el.getAttribute('placeholder')) ?? undefined
-      const required = (await el.getAttribute('required')) !== null
-      const maxLength = await el.getAttribute('maxlength')
-      const ariaLabel = await el.getAttribute('aria-label')
+      for (let i = 0; i < count; i++) {
+        const el = inputs.nth(i)
+        if (!(await el.isVisible().catch(() => false))) continue
 
-      // Resolve label via for attribute or aria-label
-      let label = ariaLabel ?? name ?? id ?? `campo_${i}`
-      if (id) {
-        const labelEl = this.page.locator(`label[for="${id}"]`)
-        if ((await labelEl.count()) > 0) {
-          label = (await labelEl.first().textContent())?.trim() ?? label
+        const id = await el.getAttribute('id')
+        const name = await el.getAttribute('name')
+        const tag = await el.evaluate(node => node.tagName.toLowerCase()).catch(() => 'input')
+        const type = tag === 'select' ? 'select' : tag === 'textarea' ? 'textarea' : (await el.getAttribute('type')) ?? 'text'
+        const placeholder = (await el.getAttribute('placeholder')) ?? undefined
+        const required = (await el.getAttribute('required')) !== null
+        const maxLength = await el.getAttribute('maxlength')
+        const ariaLabel = await el.getAttribute('aria-label')
+
+        let label = ariaLabel ?? placeholder ?? name ?? id ?? `campo_${fields.length}`
+        if (id) {
+          const labelEl = frame.locator(`label[for="${id}"]`)
+          if ((await labelEl.count()) > 0) {
+            label = (await labelEl.first().textContent())?.trim() ?? label
+          }
         }
+
+        const selector = id ? `#${id}` : name ? `[name="${name}"]` : `${tag}:nth-of-type(${i + 1})`
+
+        fields.push({
+          label,
+          selector,
+          type,
+          required,
+          frameUrl,
+          placeholder,
+          maxLength: maxLength ? parseInt(maxLength) : undefined,
+        })
       }
-
-      const selector = id ? `#${id}` : name ? `[name="${name}"]` : `input:nth-of-type(${i + 1})`
-
-      fields.push({
-        label,
-        selector,
-        type,
-        required,
-        placeholder,
-        maxLength: maxLength ? parseInt(maxLength) : undefined,
-      })
     }
 
     return fields
@@ -145,20 +156,29 @@ export class ScreenMapper {
   private async mapButtons(): Promise<ButtonElement[]> {
     const buttons: ButtonElement[] = []
 
-    const locator = this.page.locator(
-      'button, [type="submit"], a[href][class*="btn"], [role="button"]'
-    )
-    const count = await locator.count()
+    for (const { frame, frameUrl } of await activeFrames(this.page)) {
+      const locator = frame.locator(
+        'button, [type="submit"], input[type="button"], a[href][class*="btn"], [role="button"]'
+      )
+      const count = await locator.count()
 
-    for (let i = 0; i < count; i++) {
-      const el = locator.nth(i)
-      const text = ((await el.textContent()) ?? '').trim()
-      if (!text) continue
+      for (let i = 0; i < count; i++) {
+        const el = locator.nth(i)
+        if (!(await el.isVisible().catch(() => false))) continue
 
-      const selector = await this.buildSelector(el, i)
-      const action = this.classifyButtonAction(text)
+        const text = (
+          (await el.textContent()) ??
+          (await el.getAttribute('value')) ??
+          (await el.getAttribute('aria-label')) ??
+          ''
+        ).trim()
+        if (!text) continue
 
-      buttons.push({ text, selector, action })
+        const selector = await this.buildSelector(el, i)
+        const action = this.classifyButtonAction(text)
+
+        buttons.push({ text, selector, action, frameUrl })
+      }
     }
 
     return buttons
@@ -167,38 +187,40 @@ export class ScreenMapper {
   private async mapGrids(): Promise<GridElement[]> {
     const grids: GridElement[] = []
 
-    const tableLocator = this.page.locator('table, [role="grid"], [class*="grid"], [class*="table"]')
-    const count = await tableLocator.count()
+    for (const { frame, frameUrl } of await activeFrames(this.page)) {
+      const tableLocator = frame.locator('table, [role="grid"], [class*="grid"], [class*="table"]')
+      const count = await tableLocator.count()
 
-    for (let i = 0; i < count; i++) {
-      const table = tableLocator.nth(i)
-      const headers = table.locator('th, [role="columnheader"]')
-      const headerCount = await headers.count()
+      for (let i = 0; i < count; i++) {
+        const table = tableLocator.nth(i)
+        if (!(await table.isVisible().catch(() => false))) continue
 
-      const columns: GridColumn[] = []
-      for (let h = 0; h < headerCount; h++) {
-        const header = headers.nth(h)
-        const text = ((await header.textContent()) ?? '').trim()
-        const sortable =
-          (await header.getAttribute('aria-sort')) !== null ||
-          (await header.locator('[class*="sort"]').count()) > 0
+        const headers = table.locator('th, [role="columnheader"]')
+        const headerCount = await headers.count()
 
-        columns.push({ header: text, index: h, sortable })
+        const columns: GridColumn[] = []
+        for (let h = 0; h < headerCount; h++) {
+          const header = headers.nth(h)
+          const text = ((await header.textContent()) ?? '').trim()
+          const sortable =
+            (await header.getAttribute('aria-sort')) !== null ||
+            (await header.locator('[class*="sort"]').count()) > 0
+
+          columns.push({ header: text, index: h, sortable })
+        }
+
+        const rows = table.locator('tbody tr, [role="row"]:not([class*="header"])')
+        const rowCount = await rows.count()
+        const pagination = frame.locator('[class*="pagination"], [aria-label*="page"], nav[role="navigation"]')
+
+        grids.push({
+          selector: `table:nth-of-type(${i + 1})`,
+          columns,
+          rowCount,
+          hasPagination: (await pagination.count()) > 0,
+          frameUrl,
+        })
       }
-
-      const rows = table.locator('tbody tr, [role="row"]:not([class*="header"])')
-      const rowCount = await rows.count()
-
-      const pagination =
-        this.page.locator('[class*="pagination"], [aria-label*="page"], nav[role="navigation"]')
-      const hasPagination = (await pagination.count()) > 0
-
-      grids.push({
-        selector: `table:nth-of-type(${i + 1})`,
-        columns,
-        rowCount,
-        hasPagination,
-      })
     }
 
     return grids
@@ -207,16 +229,19 @@ export class ScreenMapper {
   private async mapTabs(): Promise<TabElement[]> {
     const tabs: TabElement[] = []
 
-    const tabLocator = this.page.locator('[role="tab"], .tab, [class*="tab-item"]')
-    const count = await tabLocator.count()
+    for (const { frame, frameUrl } of await activeFrames(this.page)) {
+      const tabLocator = frame.locator('[role="tab"], .tab, [class*="tab-item"]')
+      const count = await tabLocator.count()
 
-    for (let i = 0; i < count; i++) {
-      const el = tabLocator.nth(i)
-      const label = ((await el.textContent()) ?? '').trim()
-      const active = (await el.getAttribute('aria-selected')) === 'true'
-      const selector = await this.buildSelector(el, i)
+      for (let i = 0; i < count; i++) {
+        const el = tabLocator.nth(i)
+        if (!(await el.isVisible().catch(() => false))) continue
+        const label = ((await el.textContent()) ?? '').trim()
+        const active = (await el.getAttribute('aria-selected')) === 'true'
+        const selector = await this.buildSelector(el, i)
 
-      tabs.push({ label, selector, active })
+        tabs.push({ label, selector, active, frameUrl })
+      }
     }
 
     return tabs
@@ -225,18 +250,21 @@ export class ScreenMapper {
   private async mapFilters(): Promise<FilterElement[]> {
     const filters: FilterElement[] = []
 
-    const filterArea = this.page.locator(
-      '[class*="filter"], [class*="search"], [aria-label*="filtro"], [aria-label*="filter"]'
-    )
-    const count = await filterArea.count()
+    for (const { frame, frameUrl } of await activeFrames(this.page)) {
+      const filterArea = frame.locator(
+        '[class*="filter"], [class*="search"], [aria-label*="filtro"], [aria-label*="filter"], input[type="search"]'
+      )
+      const count = await filterArea.count()
 
-    for (let i = 0; i < count; i++) {
-      const el = filterArea.nth(i)
-      const label = ((await el.getAttribute('aria-label')) ?? (await el.getAttribute('placeholder')) ?? `filtro_${i}`).trim()
-      const type = (await el.getAttribute('type')) ?? 'text'
-      const selector = await this.buildSelector(el, i)
+      for (let i = 0; i < count; i++) {
+        const el = filterArea.nth(i)
+        if (!(await el.isVisible().catch(() => false))) continue
+        const label = ((await el.getAttribute('aria-label')) ?? (await el.getAttribute('placeholder')) ?? `filtro_${i}`).trim()
+        const type = (await el.getAttribute('type')) ?? 'text'
+        const selector = await this.buildSelector(el, i)
 
-      filters.push({ label, selector, type })
+        filters.push({ label, selector, type, frameUrl })
+      }
     }
 
     return filters
@@ -261,6 +289,7 @@ export class ScreenMapper {
     if (dataTestId) return `[data-testid="${dataTestId}"]`
     const ariaLabel = await el.getAttribute('aria-label')
     if (ariaLabel) return `[aria-label="${ariaLabel}"]`
-    return `[index="${index}"]`
+    const tag = await el.evaluate(node => node.tagName.toLowerCase()).catch(() => '*')
+    return `${tag}:nth-of-type(${index + 1})`
   }
 }

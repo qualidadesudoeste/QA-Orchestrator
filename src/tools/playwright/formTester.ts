@@ -1,7 +1,8 @@
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import { expect } from '@playwright/test'
 import { logger } from '@utils/logger'
 import { testData } from '@utils/testData'
+import { findInFrames } from './frameUtils'
 import type { FieldElement, ScreenMap } from './screenMapper'
 
 export interface FormTestResult {
@@ -54,10 +55,11 @@ export class FormTester {
     if (!field.required) return
 
     try {
-      await this.page.locator(field.selector).clear()
+      const fieldLocator = this.fieldLocator(field)
+      await fieldLocator.clear()
 
-      const submitBtn = this.page.locator('button[type="submit"], [type="submit"]').first()
-      if ((await submitBtn.count()) > 0) await submitBtn.click()
+      const submitBtn = await findInFrames(this.page, ['button[type="submit"], [type="submit"]'], this.frameFor(field))
+      if (submitBtn) await submitBtn.locator.click()
 
       // Check for validation message (native or custom)
       const hasError = await this.hasValidationError(field)
@@ -78,8 +80,9 @@ export class FormTester {
 
     try {
       const overLimit = 'A'.repeat(field.maxLength + 10)
-      await this.page.locator(field.selector).fill(overLimit)
-      const actualValue = await this.page.locator(field.selector).inputValue()
+      const fieldLocator = this.fieldLocator(field)
+      await fieldLocator.fill(overLimit)
+      const actualValue = await fieldLocator.inputValue()
 
       const truncated = actualValue.length <= field.maxLength
       this.results.push({
@@ -100,8 +103,9 @@ export class FormTester {
 
     const special = '!@#$%^&*()_+-=[]{}|;:,.<>?/~`'
     try {
-      await this.page.locator(field.selector).fill(special)
-      const value = await this.page.locator(field.selector).inputValue()
+      const fieldLocator = this.fieldLocator(field)
+      await fieldLocator.fill(special)
+      const value = await fieldLocator.inputValue()
 
       this.results.push({
         field: field.label,
@@ -119,9 +123,9 @@ export class FormTester {
 
     for (const payload of SECURITY_PAYLOADS.sqlInjection) {
       try {
-        await this.page.locator(field.selector).fill(payload)
-        const submitBtn = this.page.locator('button[type="submit"], [type="submit"]').first()
-        if ((await submitBtn.count()) > 0) await submitBtn.click()
+        await this.fieldLocator(field).fill(payload)
+        const submitBtn = await findInFrames(this.page, ['button[type="submit"], [type="submit"]'], this.frameFor(field))
+        if (submitBtn) await submitBtn.locator.click()
 
         // Check for DB errors, stack traces, or SQL keywords in response
         const bodyText = await this.page.locator('body').textContent()
@@ -146,9 +150,9 @@ export class FormTester {
 
     for (const payload of SECURITY_PAYLOADS.xss) {
       try {
-        await this.page.locator(field.selector).fill(payload)
-        const submitBtn = this.page.locator('button[type="submit"], [type="submit"]').first()
-        if ((await submitBtn.count()) > 0) await submitBtn.click()
+        await this.fieldLocator(field).fill(payload)
+        const submitBtn = await findInFrames(this.page, ['button[type="submit"], [type="submit"]'], this.frameFor(field))
+        if (submitBtn) await submitBtn.locator.click()
 
         // Check if script executed (dialog would appear)
         let dialogFired = false
@@ -174,21 +178,21 @@ export class FormTester {
   }
 
   private async testDuplicateSubmit(map: ScreenMap): Promise<void> {
-    const submitBtn = this.page.locator('button[type="submit"], [type="submit"]').first()
-    if ((await submitBtn.count()) === 0) return
+    const submitBtn = await findInFrames(this.page, ['button[type="submit"], [type="submit"]'])
+    if (!submitBtn) return
 
     try {
       // Fill a valid record first
       for (const field of map.fields) {
         if (field.type === 'select' || field.type === 'checkbox') continue
         const value = testData.text.short()
-        await this.page.locator(field.selector).fill(value).catch(() => {})
+        await this.fieldLocator(field).fill(value).catch(() => {})
       }
 
-      await submitBtn.click()
+      await submitBtn.locator.click()
       await this.page.waitForTimeout(300)
       // Try submitting again immediately (double-click simulation)
-      await submitBtn.click().catch(() => {})
+      await submitBtn.locator.click().catch(() => {})
 
       const hasError = await this.page.locator('[class*="error"], [class*="alerta"], [role="alert"]').count() > 0
 
@@ -205,7 +209,7 @@ export class FormTester {
 
   private async hasValidationError(field: FieldElement): Promise<boolean> {
     // Native HTML5 validation
-    const nativeInvalid = await this.page.locator(`${field.selector}:invalid`).count() > 0
+    const nativeInvalid = await this.fieldLocator(field).locator(':scope:invalid').count().catch(() => 0) > 0
     if (nativeInvalid) return true
 
     // Custom validation messages nearby
@@ -218,9 +222,23 @@ export class FormTester {
       `.field-error`,
     ]
     for (const sel of errorSelectors) {
-      if ((await this.page.locator(sel).count()) > 0) return true
+      const frame = this.frameFor(field)
+      const count = frame
+        ? await frame.locator(sel).count().catch(() => 0)
+        : await this.page.locator(sel).count().catch(() => 0)
+      if (count > 0) return true
     }
 
     return false
+  }
+
+  private fieldLocator(field: FieldElement): Locator {
+    const frame = this.frameFor(field)
+    return frame ? frame.locator(field.selector).first() : this.page.locator(field.selector).first()
+  }
+
+  private frameFor(field: FieldElement) {
+    if (!field.frameUrl) return undefined
+    return this.page.frames().find(frame => frame.url() === field.frameUrl)
   }
 }

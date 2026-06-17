@@ -79,7 +79,13 @@ export async function loginAndNavigate(
 
     await fillFirst(page, userSel, username)
     await fillFirst(page, passSel, password)
-    await clickFirst(page, submitSel)
+    const clicked = await clickFirst(page, submitSel)
+    if (!clicked) {
+      // Sistemas Maker frequentemente não têm <button>: o submit é imagem/link.
+      // Enter no campo de senha dispara o form de forma genérica.
+      console.log('      (sem botão de submit clicável — enviando com Enter)')
+      await pressEnter(page, passSel)
+    }
 
     // Espera sair da tela de login (SPA muda a rota sem reload).
     const loggedIn = await waitLoggedIn(page, url)
@@ -89,6 +95,8 @@ export async function loginAndNavigate(
     await page.screenshot({ path: dashboardScreenshot, fullPage: true }).catch(() => {})
 
     console.log('[2/4] Mapeando o menu/dashboard ...')
+    await page.waitForTimeout(4000) // deixa o menu renderizar após o login
+    await expandMenus(page)
     const menu = await collectNav(page)
     console.log(`      ${menu.length} itens navegáveis encontrados`)
     for (const m of menu.slice(0, 30)) console.log(`        • ${m.text}${m.href ? `  → ${m.href}` : ''}`)
@@ -144,43 +152,85 @@ async function clickFirst(page: Page, selectors: string[]): Promise<boolean> {
   return false
 }
 
+async function pressEnter(page: Page, selectors: string[]): Promise<boolean> {
+  for (const frame of page.frames()) {
+    for (const sel of selectors) {
+      const loc = frame.locator(sel).first()
+      if (await loc.isVisible({ timeout: 500 }).catch(() => false)) {
+        await loc.press('Enter').catch(() => {})
+        return true
+      }
+    }
+  }
+  return false
+}
+
 async function waitLoggedIn(page: Page, loginUrl: string, timeoutMs = 30_000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    const url = page.url()
-    // Saiu da rota de login = autenticou (heurística para SPA).
-    if (!/\/login\b/i.test(url) && url !== loginUrl) {
-      const stillHasPassword = await page
+    // Sinal genérico e confiável (SPA e Maker): o campo de senha sumiu de
+    // TODOS os frames => o form de login deu lugar à aplicação. Não dependemos
+    // de mudança de URL, que não acontece em apps Maker (a URL fica igual).
+    let passwordVisible = false
+    for (const frame of page.frames()) {
+      const seen = await frame
         .locator('input[type="password"]')
         .first()
-        .isVisible({ timeout: 300 })
+        .isVisible({ timeout: 200 })
         .catch(() => false)
-      if (!stillHasPassword) return true
+      if (seen) {
+        passwordVisible = true
+        break
+      }
     }
+    if (!passwordVisible) return true
     await page.waitForTimeout(500)
   }
   return false
 }
 
-/** Coleta itens navegáveis visíveis (links, botões, itens de menu). */
+/**
+ * Expande grupos colapsados do menu (padrão comum: grupos que abrem ao clicar).
+ * Genérico: tenta os toggles típicos do Maker e também cabeçalhos de grupo.
+ */
+async function expandMenus(page: Page): Promise<void> {
+  const toggleSel =
+    'a[href^="#Menu-submenu"], [onclick*="submenu" i], [aria-expanded="false"], ' +
+    '[class*="has-submenu" i], [class*="menu-group" i] > a, [class*="dropdown-toggle" i]'
+  for (const frame of page.frames()) {
+    const toggles = await frame.locator(toggleSel).all().catch(() => [])
+    for (const t of toggles) {
+      if (await t.isVisible().catch(() => false)) {
+        await t.click().catch(() => {})
+        await page.waitForTimeout(150)
+      }
+    }
+  }
+  await page.waitForTimeout(800)
+}
+
+/** Coleta itens navegáveis visíveis (links, botões, itens de menu) em todos os frames. */
 async function collectNav(page: Page): Promise<NavItem[]> {
   const items: NavItem[] = []
   const seen = new Set<string>()
 
-  const handles = await page
-    .locator('a:visible, button:visible, [role="menuitem"]:visible, [role="link"]:visible')
-    .all()
-    .catch(() => [])
+  // Inclui padrões de menu do Maker (li/[role=menuitem]/.menu-item), não só a/button.
+  const selector =
+    'a:visible, button:visible, [role="menuitem"]:visible, [role="link"]:visible, ' +
+    '[role="treeitem"]:visible, li[class*="menu"]:visible, [class*="menu-item"]:visible'
 
-  for (const h of handles) {
-    const text = ((await h.innerText().catch(() => '')) || '').trim().replace(/\s+/g, ' ')
-    if (!text || text.length > 40) continue
-    const href = (await h.getAttribute('href').catch(() => '')) ?? ''
-    const tag = (await h.evaluate(el => el.tagName.toLowerCase()).catch(() => '')) ?? ''
-    const key = `${text}|${href}`
-    if (seen.has(key)) continue
-    seen.add(key)
-    items.push({ text, href, tag })
+  for (const frame of page.frames()) {
+    const handles = await frame.locator(selector).all().catch(() => [])
+    for (const h of handles) {
+      const text = ((await h.innerText().catch(() => '')) || '').trim().replace(/\s+/g, ' ')
+      if (!text || text.length > 40) continue
+      const href = (await h.getAttribute('href').catch(() => '')) ?? ''
+      const tag = (await h.evaluate(el => el.tagName.toLowerCase()).catch(() => '')) ?? ''
+      const key = `${text}|${href}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      items.push({ text, href, tag })
+    }
   }
   return items
 }

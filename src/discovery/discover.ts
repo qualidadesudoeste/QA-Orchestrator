@@ -15,7 +15,7 @@
 
 import 'dotenv/config'
 import { explore } from './explorer'
-import { discoverLogin } from './discoveryAgent'
+import { discoverLogin, heuristicLogin } from './discoveryAgent'
 import { profileStore, computeFingerprint, type SystemProfile } from './systemProfile'
 
 export interface DiscoverOptions {
@@ -33,8 +33,15 @@ export async function discoverSystem(url: string, opts: DiscoverOptions = {}) {
     return { exploration, profile: null as SystemProfile | null }
   }
 
-  console.log(`[2/3] ${opts.dryRun ? 'Montando prompt (dry-run)' : 'Pedindo ao modelo de IA para entender a tela'} ...`)
-  const outcome = await discoverLogin(exploration, { dryRun: opts.dryRun, useVision: opts.useVision })
+  // Caminho rápido SEM IA: telas de login óbvias são resolvidas na hora,
+  // de graça e imunes a outage do provedor. A IA fica para os casos ambíguos.
+  const heuristic = opts.dryRun ? null : heuristicLogin(exploration)
+  if (heuristic) {
+    console.log('[2/3] Login óbvio detectado por heurística (sem IA) ...')
+  } else {
+    console.log(`[2/3] ${opts.dryRun ? 'Montando prompt (dry-run)' : 'Heurística inconclusiva — pedindo ao modelo de IA'} ...`)
+  }
+  const outcome = heuristic ?? (await discoverLogin(exploration, { dryRun: opts.dryRun, useVision: opts.useVision }))
 
   if (outcome.promptPreview) {
     console.log('\n--- PROMPT QUE SERIA ENVIADO ---\n')

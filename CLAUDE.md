@@ -6,9 +6,59 @@
 
 ## Onde paramos (atualizar a cada sessão)
 
-**Última sessão:** 2026-06-16
+**Última sessão:** 2026-06-17
 
-**Status:** Fases A–D funcionando + camada Maker + estrutura de conhecimento organizada. Parado para retomar amanhã.
+**Status:** 🎯 **Destravado o teste de REGRA DE NEGÓCIO** — o agente agora extrai o *oráculo* (o "deveria ser") direto do export do Maker, de forma determinística e sem IA. Provado nas 2 regras do `sgos_rules.xml`.
+
+**Feito nesta sessão (2026-06-17):**
+- **Reverificação definitiva na grade** (item #1 pendente): `register.ts` ganhou o passo `[7/7]` — depois de salvar, **reabre a Localizar, busca o token e conta as linhas**. Sucesso final = sinal imediato **OU** prova na grade (a grade é a fonte da verdade). Novo helper `reopenAndCount()` em `makerSession.ts`; novo campo `verifiedInGrid` na evidência/aprendizado. O `crud full` herda isso no Create.
+- **Parser de regras do Maker → oráculo** (`src/knowledge/makerRules.ts`, comando `npm run rules -- <arquivo.xml> [--code SGOS]`): decodifica o `REG_INTERFACE` (base64 → DFM Delphi), reconstrói as `FUNCTION/SQL` embutidas e produz **3 saídas**: `business_rules.md` (oráculo humano), `business_rules.json` (oráculo de máquina — **contrato p/ integrar com outros projetos**) e `cenarios_regras.md` (cenários positivo/negativos derivados, sem IA). Trata as 2 formas do Maker: `<SQL TYPE>` (DML estruturado) e `<PSQL><COMMAND>` (SQL cru de consulta/permissão).
+- **Provado no SGOS** (`sgos_rules.xml`): regra **[136] Cancelar OS** → extraiu as DUAS atualizações em cascata (`[REDACTED_TABLE].[REDACTED_COL]=6, [REDACTED_COL]=:pMotivo` **e** `[REDACTED_TABLE].[REDACTED_COL]='N'`, ambas `WHERE OS_COD=:pOS_COD`); regra **[398] Verificar Permissão** → extraiu o SELECT que define a permissão (`[REDACTED_TABLE]` ligando `[REDACTED_COL]=:USUARIO` ao contrato da OS). 6 cenários derivados (2 positivos / 4 negativos).
+
+**Decisão estratégica desta sessão (alinhada com a Sheila):** testar regra de negócio = comparar o comportamento contra um **oráculo**; sem oráculo, o agente só faz fumaça + validação de campo. O Maker é a mina de ouro: a regra vem exportável em XML. **NÃO precisamos do FRZ do sistema inteiro** — trabalhar **tela a tela / regra a regra** é o caminho certo (granularidade de teste + export viável). Para sistemas não-Maker, a fonte vira um `business_rules.md` estruturado (alimentado pela Sheila/time). "Pode Seguir" dado para construir o parser.
+
+**Próximos passos sugeridos:**
+1. **Ligar oráculo → execução:** usar o `business_rules.json` para o runner validar de verdade (executar o cenário na UI e conferir o efeito; idealmente checar a tabela via os adaptadores em `src/tools/database/`).
+2. Conseguir o export Maker de **mais telas** do SGOS (e do CLE/SIGP) e rodar `rules` em cada — a cobertura cresce por tela.
+3. Melhorar o parser para `INSERT` com colunas/valores e funções aninhadas (hoje SQL cru de consulta já sai; refinar quando aparecer caso novo).
+4. **Rotacionar as 3 chaves de API** (continuam em texto puro no `.env`).
+
+---
+
+### Sessão 2026-06-16 (continuação) (histórico)
+
+**Última sessão:** 2026-06-16 (continuação)
+
+**Status:** 🎉 **CRUD completo autônomo funcionando no SGOS** — o agente loga, navega, e faz Create/Read/Update/Delete sozinho, só com os comandos dele e SEM IA externa nas decisões mecânicas. Provado ponta-a-ponta na tela Natureza: `Create OK | Read 1 | Update OK | Delete OK (1→0)`.
+
+**CRUD (fase nova, 2026-06-16):**
+- **`makerSession.ts`** — blocos compartilhados (login c/ Enter, abrir tela, achar form, salvar, confirmar sucesso por 4 vias, buscar na grade, achar linha por token, editar/excluir por linha, confirmar diálogo). `register` e `crud` reusam (sem duplicar).
+- **`crud.ts`** — `search | edit | delete | full`. **Segurança:** edit/delete só agem em linhas que contêm o **token do agente** (nunca dados reais). `--all` exclui todos do token na mesma sessão. `full` roda o ciclo CRUD inteiro num token único e se auto-limpa.
+- **Conhecimento Maker gravado:** Excluir = lixeira → **modal "Confirma a exclusão?" (Ok/Cancelar)**; Editar = lápis → mesmo form preenchido. Login pode demorar a confirmar (janela aumentada p/ 25s). Tudo em `systems/SGOS/system_info/architecture.md`.
+- **Comando novo:** `npm run crud -- <op> <url> "<Tela>" [--headed] [--token "x"] [--all]`.
+
+**Feito nesta sessão (continuação 2026-06-16):**
+- **Fallback heurístico de login (sem IA)** em `discoveryAgent.ts` (`heuristicLogin`): se há 1 senha + 1 usuário claro, monta o `LoginProfile` sozinho (imune a outage de IA, custo zero). Resolveu o SGOS sozinho (`#username`/`#password`, confiança 0.95). IA só para telas ambíguas.
+- **Login Maker sem botão:** `navigator`/`register` enviam com **Enter** quando não há `<button>` de submit.
+- **Detecção de login genérica:** "o campo de senha sumiu" (não depende de mudança de URL — Maker mantém a URL).
+- **Mapa de menu:** `navigator` agora dá settle + expande grupos + varre frames → **28 módulos do SGOS** salvos no perfil.
+- **Comando novo `register`** (`src/discovery/register.ts`): abre tela → "Incluir Registro" → preenche → **Salva** (acha o ícone de disquete por title/classe) → confirma sucesso por **4 métodos independentes** (toast por classe, varredura de texto visível p/ o aviso mínimo no canto, token na grade, form limpou) → grava evidência + aprende em `executions/` e `learned_patterns/fluxos_cadastro.md`.
+- **Comandos de auto-conhecimento:** `inspect` (audita as pastas locais: o que está preenchido/vazio por sistema) e `context` (monta um briefing do sistema lendo knowledge+learned_patterns+perfil — deixa o agente "mais inteligente sobre o sistema em si").
+- **Conhecimento do SGOS gravado** em `systems/SGOS/system_info/architecture.md`: é **Maker IA**; telas abrem na **aba Localizar** (a grade); cadastro = Localizar→Incluir→preencher→Salvar(disquete); **retorno de salvamento do Maker é fraco/inconsistente** → sempre confirmar de mais de uma forma. Perfil alinhado para `code=SGOS`.
+
+**Provado ao vivo:** inclusão de **Natureza** no SGOS (`[REDACTED_HOST].../os/open.do?sys=WKR`, usuário `qualidade`) — toast "Os dados foram salvos com sucesso" + form limpo. Sem VPN.
+
+**Próximos passos sugeridos:**
+1. Confirmação definitiva reabrindo a Localizar e buscando o token (já há sinal de form-limpo; falta o loop de reverificação na grade).
+2. Repetir `register` em outras telas (Empresas, Grupos de Serviço) e cadastros compostos (abas).
+3. Generalizar os padrões Maker IA num conhecimento cross-sistema (vale p/ CLE, SGOS, SIGP).
+4. **Rotacionar as 3 chaves de API** (continuam em texto puro no `.env`).
+
+---
+
+### Histórico — Fases A–D (2026-06-16)
+
+**Status:** Fases A–D funcionando + camada Maker + estrutura de conhecimento organizada.
 
 **Feito em 2026-06-16:**
 - **3 provedores de IA plugáveis** (`anthropic | openai | gemini` via `AI_PROVIDER`). Gemini free tier é o que roda (Anthropic e OpenAI com chaves válidas mas **sem saldo**). Gemini: safety liberado + retry 429/503/RECITATION + temperatura.

@@ -18,6 +18,7 @@ import type { Browser, Page } from '@playwright/test'
 import fs from 'fs'
 import path from 'path'
 import { computeFingerprint, idFromUrl } from './systemProfile'
+import { evidencesDir, resolveCode } from '../knowledge/layout'
 
 export interface InputCandidate {
   frameUrl: string
@@ -74,7 +75,7 @@ const BLOCK_SIGNATURES: Array<{ pattern: RegExp; reason: string }> = [
 /** Abre uma URL e coleta tudo que parece campo/botão em todos os frames. */
 export async function explore(url: string, opts: ExploreOptions = {}): Promise<ExplorationResult> {
   const settleMs = opts.settleMs ?? 4000
-  const screenshotDir = opts.screenshotDir ?? path.join('evidence', 'discovery')
+  const screenshotDir = opts.screenshotDir ?? evidencesDir(resolveCode(url), 'discovery')
   fs.mkdirSync(screenshotDir, { recursive: true })
 
   let browser: Browser | null = null

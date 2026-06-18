@@ -6,11 +6,21 @@
 
 ## Onde paramos (atualizar a cada sessão)
 
-**Última sessão:** 2026-06-17
+**Última sessão:** 2026-06-18
 
-**Status:** 🎯 **Destravado o teste de REGRA DE NEGÓCIO** — o agente agora extrai o *oráculo* (o "deveria ser") direto do export do Maker, de forma determinística e sem IA. Provado nas 2 regras do `sgos_rules.xml`.
+**Status:** 🧹 **Raiz enxugada + evidência agora é SEMPRE por sistema.** Reorganização de pastas: o que é "do projeto/agente em si" foi para `data/`; toda evidência deixou de ser um depósito global e passou a viver dentro de `systems/<CODE>/evidences/`.
 
-**Feito nesta sessão (2026-06-17):**
+**Feito nesta sessão (2026-06-18):**
+- **Decluttering da raiz (−5 pastas):** `prompts/`, `templates/`, `metrics/` → movidos para `data/{prompts,templates,metrics}` (junto de `data/profiles`, já existente). `data/` é a pasta **exclusiva do projeto/agente**.
+- **Fim do depósito global de evidência:** as antigas `evidence/` (runtime) e `evidences/{critical,major,minor,visual}/` (raiz) foram **removidas**. Evidência agora é **sempre por sistema**: `systems/<CODE>/evidences/<sub>/`, onde `<sub>` = severidade (`critical|major|minor|visual`) **ou** tipo de runtime (`discovery|navigation|scenarios|features`). Acabou a mistura entre sistemas.
+- **Código alinhado:** novo helper `evidencesDir(code, sub)` e `dataDir()` em `layout.ts`; `scaffold.ts` cria evidências dentro do sistema; `inspect.ts` audita `data/*` e evidências por sistema; refs hardcoded de `'evidence'` em `explorer.ts`, `navigator.ts`, `testGen.ts` e `runner.ts` agora resolvem o `<CODE>` via `resolveCode(url)`. `.gitignore` atualizado (ignora binários em `systems/**/evidences/**`, versiona a estrutura `.gitkeep`). `tsc --noEmit` limpo.
+- **Higiene de branch:** os 3 commits do motor de descoberta/Maker continuavam só em `feat/maker-discovery-engine` (a `main` estava atrás) — esta sessão consolida e dá push.
+
+**Histórico — Sessão 2026-06-17:**
+
+**Status (2026-06-17):** 🎯 **Destravado o teste de REGRA DE NEGÓCIO** — o agente agora extrai o *oráculo* (o "deveria ser") direto do export do Maker, de forma determinística e sem IA. Provado nas 2 regras do `sgos_rules.xml`.
+
+**Feito na sessão 2026-06-17:**
 - **Reverificação definitiva na grade** (item #1 pendente): `register.ts` ganhou o passo `[7/7]` — depois de salvar, **reabre a Localizar, busca o token e conta as linhas**. Sucesso final = sinal imediato **OU** prova na grade (a grade é a fonte da verdade). Novo helper `reopenAndCount()` em `makerSession.ts`; novo campo `verifiedInGrid` na evidência/aprendizado. O `crud full` herda isso no Create.
 - **Parser de regras do Maker → oráculo** (`src/knowledge/makerRules.ts`, comando `npm run rules -- <arquivo.xml> [--code SGOS]`): decodifica o `REG_INTERFACE` (base64 → DFM Delphi), reconstrói as `FUNCTION/SQL` embutidas e produz **3 saídas**: `business_rules.md` (oráculo humano), `business_rules.json` (oráculo de máquina — **contrato p/ integrar com outros projetos**) e `cenarios_regras.md` (cenários positivo/negativos derivados, sem IA). Trata as 2 formas do Maker: `<SQL TYPE>` (DML estruturado) e `<PSQL><COMMAND>` (SQL cru de consulta/permissão).
 - **Provado no SGOS** (`sgos_rules.xml`): regra **[136] Cancelar OS** → extraiu as DUAS atualizações em cascata (`[REDACTED_TABLE].[REDACTED_COL]=6, [REDACTED_COL]=:pMotivo` **e** `[REDACTED_TABLE].[REDACTED_COL]='N'`, ambas `WHERE OS_COD=:pOS_COD`); regra **[398] Verificar Permissão** → extraiu o SELECT que define a permissão (`[REDACTED_TABLE]` ligando `[REDACTED_COL]=:USUARIO` ao contrato da OS). 6 cenários derivados (2 positivos / 4 negativos).
@@ -264,9 +274,24 @@ tests/
 └── integration/     # Testes de integração ← A IMPLEMENTAR
 prisma/
 └── schema.prisma    # Modelos: BugReport, KnowledgeEntry, TestRun ✓
-evidence/            # Screenshots, vídeos, logs (gitignored)
+data/                # EXCLUSIVO do projeto/agente
+├── profiles/        # Memória de máquina: perfis aprendidos (*.json) ✓
+├── prompts/         # Prompts do agente (master, exploratório, regressão...) ✓
+├── templates/       # Templates de bug / caso de teste / relatório ✓
+└── metrics/         # CSVs agregados (bug_history, executions, coverage) ✓
+systems/<CODE>/      # Base de conhecimento POR SISTEMA
+├── system_info/  knowledge/  screens/<tela>/  learned_patterns/  reports/
+├── executions/<data>/   # logs + screenshots de cada execução (gitignored)
+└── evidences/<sub>/     # evidência SEMPRE por sistema (nunca depósito global)
+                         #   <sub> = critical|major|minor|visual (severidade)
+                         #          ou discovery|navigation|scenarios|features (runtime)
 reports/             # Relatórios gerados (gitignored)
+artifacts/           # Saídas de runtime/Allure (gitignored)
 ```
+
+> **Regra de evidência:** nunca criar um depósito global de evidência na raiz. Toda
+> screenshot/vídeo/feature gerado vai para `systems/<CODE>/evidences/<sub>/`, com o
+> `<CODE>` resolvido por `resolveCode(url)` (em `src/knowledge/layout.ts`).
 
 ---
 

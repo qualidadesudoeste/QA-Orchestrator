@@ -18,7 +18,6 @@ playwright/.auth/
 # Test outputs / evidência (screenshots de telas internas — nunca commitar)
 allure-results/
 allure-report/
-evidence/
 artifacts/
 reports/*.json
 reports/*.html
@@ -35,10 +34,15 @@ test-results/
 systems/**/screenshots/
 systems/**/executions/
 systems/**/system_info/credentials.md
-evidences/**/*.png
-evidences/**/*.jpg
-evidences/**/*.webm
-evidences/**/*.zip
+# Evidência é SEMPRE por sistema (systems/<CODE>/evidences/...): versiona a
+# estrutura (.gitkeep) mas nunca os binários/telas internas.
+systems/**/evidences/**/*.png
+systems/**/evidences/**/*.jpg
+systems/**/evidences/**/*.jpeg
+systems/**/evidences/**/*.webm
+systems/**/evidences/**/*.zip
+systems/**/evidences/**/*.json
+systems/**/evidences/**/*.feature
 
 # Prisma
 prisma/migrations/

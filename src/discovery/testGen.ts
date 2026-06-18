@@ -18,6 +18,7 @@ import path from 'path'
 import { explore } from './explorer'
 import { getProvider } from './aiProvider'
 import { idFromUrl, profileStore } from './systemProfile'
+import { evidencesDir, resolveCode } from '../knowledge/layout'
 
 export interface BddScenarioGen {
   tipo: string
@@ -28,8 +29,6 @@ export interface BddScenarioGen {
   entao: string[]
   dadosTeste?: Record<string, string>
 }
-
-const OUT_DIR = path.join('evidence', 'scenarios')
 
 const SYSTEM_PROMPT = `Você é um QA Sênior que gera cenários de teste automatizados em BDD (português).
 Recebe os campos e botões de uma tela e gera cenários CONCRETOS e executáveis.
@@ -61,7 +60,7 @@ export async function generateTests(
   url: string,
   opts: { useVision?: boolean; headed?: boolean } = {}
 ): Promise<{ scenarios: BddScenarioGen[]; featurePath: string; jsonPath: string }> {
-  fs.mkdirSync(OUT_DIR, { recursive: true })
+  const outDir = evidencesDir(resolveCode(url), 'scenarios')
   const id = idFromUrl(url)
 
   console.log(`\n[1/3] Mapeando a tela ${url} ...`)
@@ -108,8 +107,8 @@ export async function generateTests(
 
   console.log(`[3/3] Escrevendo .feature e JSON ...`)
   const feature = toFeature(exploration.title || id, scenarios)
-  const featurePath = path.join(OUT_DIR, `${id}.feature`)
-  const jsonPath = path.join(OUT_DIR, `${id}.scenarios.json`)
+  const featurePath = path.join(outDir, `${id}.feature`)
+  const jsonPath = path.join(outDir, `${id}.scenarios.json`)
   fs.writeFileSync(featurePath, feature, 'utf-8')
   fs.writeFileSync(jsonPath, JSON.stringify(scenarios, null, 2), 'utf-8')
   console.log(`      ✓ ${featurePath}`)

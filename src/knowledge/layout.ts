@@ -9,9 +9,9 @@
  *     executions/<data>/  execution_log.md, findings.md, screenshots/
  *     reports/
  *     learned_patterns/  validacoes_frequentes.md, problemas_recorrentes.md, ...
- *   evidences/{critical,major,minor,visual}/
- *   metrics/{bug_history,executions,coverage}.csv
- *   prompts/  templates/  README.md
+ *     evidences/<sub>/   evidência SEMPRE por sistema (nunca depósito global)
+ *   data/   (exclusivo do projeto/agente: profiles, prompts, templates, metrics)
+ *     profiles/*.json  prompts/  templates/  metrics/{bug_history,executions,coverage}.csv
  *
  * <CODE> = código curto do sistema (SIGP, CLE, SGOS...). A memória legível
  * (markdown) vive aqui; a memória de máquina continua em data/profiles/*.json.
@@ -57,15 +57,21 @@ export function resolveCode(url: string): string {
   }
 }
 
-// ── Raiz ──────────────────────────────────────────────────────────────────
-export const promptsDir = () => ens(path.join(ROOT, 'prompts'))
-export const templatesDir = () => ens(path.join(ROOT, 'templates'))
-export const metricsDir = () => ens(path.join(ROOT, 'metrics'))
-export const evidencesDir = (sev: 'critical' | 'major' | 'minor' | 'visual') =>
-  ens(path.join(ROOT, 'evidences', sev))
+// ── Projeto/agente (pasta exclusiva: data/) ─────────────────────────────────
+export const dataDir = () => ens(path.join(ROOT, 'data'))
+export const promptsDir = () => ens(path.join(ROOT, 'data', 'prompts'))
+export const templatesDir = () => ens(path.join(ROOT, 'data', 'templates'))
+export const metricsDir = () => ens(path.join(ROOT, 'data', 'metrics'))
 
 // ── Por sistema ───────────────────────────────────────────────────────────
 export const systemRoot = (code: string) => ens(path.join(ROOT, 'systems', code))
+/**
+ * Evidência SEMPRE por sistema: systems/<CODE>/evidences/<sub>/.
+ * <sub> = severidade (critical|major|minor|visual) OU tipo de runtime
+ * (discovery|navigation|scenarios|features|maker). Nunca um depósito global.
+ */
+export const evidencesDir = (code: string, sub: string) =>
+  ens(path.join(systemRoot(code), 'evidences', sub))
 export const systemInfoDir = (code: string) => ens(path.join(systemRoot(code), 'system_info'))
 export const knowledgeDir = (code: string) => ens(path.join(systemRoot(code), 'knowledge'))
 export const learnedPatternsDir = (code: string) => ens(path.join(systemRoot(code), 'learned_patterns'))

@@ -14,6 +14,8 @@ import {
   systemInfoDir, knowledgeDir, learnedPatternsDir, reportsDir, systemRoot,
 } from './layout'
 
+const SEVERITIES = ['critical', 'major', 'minor', 'visual'] as const
+
 function writeIfAbsent(file: string, content: string): void {
   if (fs.existsSync(file)) return
   fs.mkdirSync(path.dirname(file), { recursive: true })
@@ -35,14 +37,12 @@ export function scaffoldRoot(): void {
   writeIfAbsent(path.join(templatesDir(), 'bug_template.md'), '# Bug: <título>\n\n- **Severidade:** crítico | maior | menor | visual\n- **Tela:** \n- **Passos:** \n- **Esperado:** \n- **Obtido:** \n- **Evidência:** \n')
   writeIfAbsent(path.join(templatesDir(), 'test_case_template.md'), '# Caso de Teste\n\n- **Cenário:** \n- **Pré-condições:** \n- **Passos (BDD):** Dado / Quando / Então\n- **Dados:** \n- **Resultado esperado:** \n')
   writeIfAbsent(path.join(templatesDir(), 'report_template.md'), '# Relatório\n\n- **Sistema:** \n- **Período:** \n- **Cenários executados:** \n- **Bugs encontrados:** \n- **Cobertura:** \n')
-  // evidences por severidade
-  for (const sev of ['critical', 'major', 'minor', 'visual'] as const) gitkeep(evidencesDir(sev))
   // metrics (com cabeçalho CSV)
   writeIfAbsent(path.join(metricsDir(), 'bug_history.csv'), 'data,sistema,tela,severidade,titulo,status\n')
   writeIfAbsent(path.join(metricsDir(), 'executions.csv'), 'data,sistema,tela,cenarios,passou,falhou\n')
   writeIfAbsent(path.join(metricsDir(), 'coverage.csv'), 'sistema,telas_mapeadas,telas_testadas,percentual\n')
   // README
-  writeIfAbsent(path.join(ROOT, 'README.md'), '# QA-Orchestrator — Base de Conhecimento\n\nEstrutura: `systems/<CODE>/` (system_info, knowledge, screens, executions, reports, learned_patterns), `evidences/`, `metrics/`, `prompts/`, `templates/`.\n')
+  writeIfAbsent(path.join(ROOT, 'README.md'), '# QA-Orchestrator — Base de Conhecimento\n\nEstrutura: `systems/<CODE>/` (system_info, knowledge, screens, executions, reports, learned_patterns, **evidences**), e `data/` (exclusivo do projeto: profiles, prompts, templates, metrics).\n')
 }
 
 const LEARNED = [
@@ -65,6 +65,8 @@ export function scaffoldSystem(code: string, name = code): void {
   writeIfAbsent(path.join(knowledgeDir(code), 'known_bugs.md'), `# Bugs Conhecidos — ${name}\n`)
   // learned_patterns
   for (const [file, content] of LEARNED) writeIfAbsent(path.join(learnedPatternsDir(code), file), content)
+  // evidências por severidade — SEMPRE dentro do próprio sistema
+  for (const sev of SEVERITIES) gitkeep(evidencesDir(code, sev))
   // pastas vazias
   gitkeep(reportsDir(code))
   gitkeep(path.join(systemRoot(code), 'screens'))

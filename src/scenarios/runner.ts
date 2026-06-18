@@ -6,6 +6,7 @@ import { isProduction } from '@config/environments'
 import { ScreenMapper } from '@tools/playwright/screenMapper'
 import type { ScreenMap } from '@tools/playwright/screenMapper'
 import { BddPlaywrightRunner, suiteToFeature } from './bdd'
+import { evidencesDir, resolveCode } from '../knowledge/layout'
 import type { BddStepResult } from './bdd'
 import type { TestScenario, ScenarioSuite, ScenarioResult } from './types'
 
@@ -163,7 +164,7 @@ export class ScenarioRunner {
 
   private async writeFeature(suite: ScenarioSuite): Promise<string | undefined> {
     try {
-      const dir = path.resolve('evidence', 'features')
+      const dir = evidencesDir(resolveCode(suite.url), 'features')
       await fs.mkdir(dir, { recursive: true })
       const safe = suite.module.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()
       const file = path.join(dir, `${safe || 'suite'}-${suite.id}.feature`)

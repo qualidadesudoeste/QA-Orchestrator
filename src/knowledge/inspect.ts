@@ -31,6 +31,7 @@ interface SystemAudit {
   learnedPatterns: { total: number; filled: number }
   screens: string[]
   executions: string[]
+  evidences: string[]
   reports: number
 }
 
@@ -95,6 +96,7 @@ export function auditSystem(code: string, profiles: Set<string>): SystemAudit {
     learnedPatterns: { total: lpFiles.length, filled: lpFilled },
     screens: listDir(path.join(base, 'screens')),
     executions: listDir(path.join(base, 'executions')),
+    evidences: listDir(path.join(base, 'evidences')),
     reports: countFiles(path.join(base, 'reports')),
   }
 }
@@ -115,10 +117,10 @@ function tick(b: boolean): string {
 
 function printReport(audits: SystemAudit[]): void {
   // Estrutura raiz
-  const rootDirs = ['prompts', 'templates', 'metrics', 'evidences', 'data/profiles']
+  const rootDirs = ['data/profiles', 'data/prompts', 'data/templates', 'data/metrics']
   console.log('\n=== Auditoria das pastas locais (base de conhecimento) ===')
   console.log(`Raiz: ${ROOT}\n`)
-  console.log('Estrutura raiz:')
+  console.log('Pastas do projeto (data/):')
   for (const d of rootDirs) {
     const abs = path.join(ROOT, d)
     console.log(`  ${tick(fs.existsSync(abs))} ${d}`)
@@ -140,6 +142,7 @@ function printReport(audits: SystemAudit[]): void {
     console.log(`   learned_patterns: ${a.learnedPatterns.filled}/${a.learnedPatterns.total} com conteúdo`)
     console.log(`   screens mapeadas: ${a.screens.length}${a.screens.length ? ' → ' + a.screens.slice(0, 8).join(', ') : ''}`)
     console.log(`   execuções:        ${a.executions.length}`)
+    console.log(`   evidências:       ${a.evidences.length}${a.evidences.length ? ' → ' + a.evidences.join(', ') : ''}`)
     console.log(`   relatórios:       ${a.reports}`)
   }
 

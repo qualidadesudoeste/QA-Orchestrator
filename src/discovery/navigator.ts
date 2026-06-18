@@ -16,9 +16,9 @@
 import 'dotenv/config'
 import { chromium } from '@playwright/test'
 import type { Browser, Frame, Page } from '@playwright/test'
-import fs from 'fs'
 import path from 'path'
 import { profileStore, idFromUrl, type ModuleProfile } from './systemProfile'
+import { evidencesDir, resolveCode } from '../knowledge/layout'
 
 export interface NavItem {
   text: string
@@ -43,14 +43,15 @@ export interface NavigationResult {
   visited: VisitedModule[]
 }
 
-const SHOT_DIR = path.join('evidence', 'navigation')
+/** Pasta de screenshots SEMPRE por sistema: systems/<CODE>/evidences/navigation/ */
+const shotDirFor = (url: string) => evidencesDir(resolveCode(url), 'navigation')
 
 export async function loginAndNavigate(
   url: string,
   targets: string[] = [],
   opts: { headed?: boolean } = {}
 ): Promise<NavigationResult> {
-  fs.mkdirSync(SHOT_DIR, { recursive: true })
+  const shotDir = shotDirFor(url)
   const id = idFromUrl(url)
   const profile = profileStore.loadByUrl(url)
   const username = requiredEnv('APP_USERNAME')
@@ -91,7 +92,7 @@ export async function loginAndNavigate(
     const loggedIn = await waitLoggedIn(page, url)
     console.log(`      ${loggedIn ? '✓ login OK' : '✗ ainda na tela de login'} — URL: ${page.url()}`)
 
-    const dashboardScreenshot = path.join(SHOT_DIR, `${id}-dashboard.png`)
+    const dashboardScreenshot = path.join(shotDir, `${id}-dashboard.png`)
     await page.screenshot({ path: dashboardScreenshot, fullPage: true }).catch(() => {})
 
     console.log('[2/4] Mapeando o menu/dashboard ...')
@@ -238,7 +239,7 @@ async function collectNav(page: Page): Promise<NavItem[]> {
 /** Tenta entrar num módulo pelo nome (texto), captura a tela resultante. */
 async function enterModule(page: Page, baseUrl: string, id: string, target: string): Promise<VisitedModule> {
   const want = norm(target)
-  const shot = path.join(SHOT_DIR, `${id}-${slug(target)}.png`)
+  const shot = path.join(shotDirFor(baseUrl), `${id}-${slug(target)}.png`)
 
   const candidates = await page.locator('a:visible, button:visible, [role="menuitem"]:visible').all().catch(() => [])
   for (const c of candidates) {

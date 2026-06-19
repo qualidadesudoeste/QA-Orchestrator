@@ -27,8 +27,10 @@ Tudo isso é **confidencial e fica apenas local** (gitignored):
 - **Oráculo de regra de negócio** (`makerRules.ts`, `npm run rules`): parseia export Maker → `business_rules.json` (oráculo de máquina) + cenários derivados, determinístico (sem IA).
 - **Verificador de oráculo → execução** (`oracleVerifier.ts`, `npm run verify-rule`): transforma o oráculo num plano de verificação. Confere o efeito de duas formas: **banco** (`--live`, só leitura) **ou UI/grade** (`uiOracleCheck.ts`, o caminho quando não há acesso a banco).
 - **Playwright MCP** (`.mcp.json`) para o Claude dirigir telas ao vivo nas sessões (exige reabrir o Claude Code; alvos podem exigir VPN).
+- **Helpers de captura/clique** (`src/tools/playwright/capture.ts`): `attachConsoleCapture` (coleta passiva de erros JS → evidência, já plugado em `register`/`crud`), `captureFullScreen` (screenshot da tela inteira do Windows via PowerShell+.NET, pega o que está fora do browser) e `clickAtCoordinates`/`clickByBoundingBox` (clique por coordenada, fallback p/ iframe que não expõe o elemento — ex.: SIGP/Maker).
+- **Navegação robusta** (`gotoSmart` em `src/tools/playwright/frameUtils.ts`): normaliza URL sem protocolo p/ `https://`, loga o erro real do `goto` e avisa quando a página fica em `about:blank` (em vez de falhar em silêncio). Usado por todos os fluxos que abrem um alvo (`register`/`crud`/`screen`/`navigate`/`explore`/`maker`/`runner`/`orchestrator`).
 
-**Estado de código:** `tsc --noEmit` limpo. Novos: `src/scenarios/oracleVerifier.ts`, `src/scenarios/uiOracleCheck.ts`, `.mcp.json`. Deps reinstaladas (`npm install`); `form-data` corrigido (`npm audit fix`); restam 8 vulnerabilidades transitivas da stack LangChain (só somem com upgrade major → "Pode Seguir").
+**Estado de código:** `tsc --noEmit` limpo. Deps instaladas (`npm install`); restam 8 vulnerabilidades transitivas da stack LangChain (só somem com upgrade major → "Pode Seguir").
 
 👉 **Para o "onde paramos" detalhado, o objetivo da próxima sessão e os alvos, leia `CLAUDE.local.md`.**
 

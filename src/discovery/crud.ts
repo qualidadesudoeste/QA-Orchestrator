@@ -25,6 +25,8 @@ import {
   selectorsFromProfile, loginToSystem, openScreen, pickFormFrame, fillForm,
   clickSave, detectSuccess, searchInGrid, countRowsWithToken, clickRowAction, confirmDialog,
 } from './makerSession'
+import { attachConsoleCapture } from '../tools/playwright/capture'
+import type { ConsoleCapture } from '../tools/playwright/capture'
 
 type Op = 'search' | 'edit' | 'delete' | 'full'
 
@@ -59,9 +61,11 @@ export async function runCrud(
   }
 
   let browser: Browser | null = null
+  let consoleCap: ConsoleCapture | null = null
   try {
     browser = await chromium.launch({ headless: !opts.headed, slowMo: opts.headed ? 400 : 0 })
     const page = await (await browser.newContext({ locale: 'pt-BR' })).newPage()
+    consoleCap = attachConsoleCapture(page) // passivo: coleta erros JS como evidência
 
     console.log(`\n[crud:${op}] Logando em ${url} ...`)
     const loggedIn = await loginToSystem(page, url, sel)
@@ -140,6 +144,17 @@ export async function runCrud(
     if (opts.headed) await page.waitForTimeout(6000)
     return res(true, opened, matched, deleted > 0, confirmed)
   } finally {
+    // Salva erros de console/JS coletados (best-effort; não derruba o teste).
+    try {
+      const errs = consoleCap?.errors() ?? []
+      if (errs.length) {
+        const p = path.join(shotDir, `crud-${op}-console-erros.json`)
+        fs.writeFileSync(p, JSON.stringify(errs, null, 2), 'utf-8')
+        evidence.push(p)
+        console.log(`      ⚠️ ${errs.length} erro(s) de console/JS — salvo em ${path.basename(p)}`)
+      }
+      consoleCap?.detach()
+    } catch { /* evidência é best-effort */ }
     await browser?.close().catch(() => {})
   }
 

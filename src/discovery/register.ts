@@ -19,6 +19,8 @@ import {
   selectorsFromProfile, loginToSystem, openScreen, clickInclude,
   pickFormFrame, fillForm, clickSave, detectSuccess, reopenAndCount,
 } from './makerSession'
+import { attachConsoleCapture } from '../tools/playwright/capture'
+import type { ConsoleCapture } from '../tools/playwright/capture'
 
 export interface RegisterResult {
   loggedIn: boolean
@@ -55,9 +57,11 @@ export async function registerRecord(
 
   let browser: Browser | null = null
   let page!: Page
+  let consoleCap: ConsoleCapture | null = null
   try {
     browser = await chromium.launch({ headless: !opts.headed, slowMo: opts.headed ? 400 : 0 })
     page = await (await browser.newContext({ locale: 'pt-BR' })).newPage()
+    consoleCap = attachConsoleCapture(page) // passivo: coleta erros JS como evidência
 
     console.log(`\n[1/6] Logando em ${url} ...`)
     const loggedIn = await loginToSystem(page, url, sel)
@@ -109,6 +113,18 @@ export async function registerRecord(
     if (opts.headed) await page.waitForTimeout(8000)
     return result(true, opened, true, saved, confirmed, filledFields, verifiedInGrid)
   } finally {
+    // Salva erros de console/JS coletados (não derruba o teste se falhar).
+    try {
+      const errs = consoleCap?.errors() ?? []
+      if (errs.length) {
+        const p = path.join(shotDir, 'console-erros.json')
+        fs.writeFileSync(p, JSON.stringify(errs, null, 2), 'utf-8')
+        evidence.push(p)
+        notes.push(`${errs.length} erro(s) de console/JS capturado(s) durante o fluxo (ver console-erros.json).`)
+        console.log(`      ⚠️ ${errs.length} erro(s) de console/JS — salvo em console-erros.json`)
+      }
+      consoleCap?.detach()
+    } catch { /* evidência é best-effort */ }
     await browser?.close().catch(() => {})
   }
 

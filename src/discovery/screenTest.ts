@@ -16,7 +16,7 @@ import { chromium } from '@playwright/test'
 import type { Browser, Frame, Page } from '@playwright/test'
 import fs from 'fs'
 import path from 'path'
-import { findInFrames, waitForAnyFrameSelector } from '../tools/playwright/frameUtils'
+import { findInFrames, waitForAnyFrameSelector, gotoSmart } from '../tools/playwright/frameUtils'
 import { profileStore } from './systemProfile'
 import { getProvider } from './aiProvider'
 import { screenDir, screenshotsDir, resolveCode } from '../knowledge/layout'
@@ -50,7 +50,7 @@ export async function testScreen(url: string, screenName: string, opts: { headed
     const page = await (await browser.newContext({ locale: 'pt-BR' })).newPage()
 
     console.log(`\n[1/5] Logando em ${url} ...`)
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => null)
+    await gotoSmart(page, url, { timeout: 60_000 })
     await waitForAnyFrameSelector(page, [...userSel, ...passSel], 45_000)
     const loggedIn = await login(page, userSel, passSel, submitSel)
     console.log(`      ${loggedIn ? '✓ logado' : '✗ login não confirmado'}`)

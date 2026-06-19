@@ -7,6 +7,7 @@ import { env, isProduction } from '@config/environments'
 import { CLAUDE_MODELS, PRODUCTION_RESTRICTIONS, RISK_LEVELS } from '@config/constants'
 import { logger } from '@utils/logger'
 import { ScreenMapper } from '@tools/playwright/screenMapper'
+import { gotoSmart } from '@tools/playwright/frameUtils'
 import { ScenarioGenerator, ScenarioRunner } from '@scenarios/index'
 import { knowledgeBase } from '@memory/knowledgeBase'
 
@@ -94,7 +95,7 @@ Responda APENAS com o JSON.
       const page = await context.newPage()
 
       logger.info(`Abrindo alvo para mapeamento: ${input.target}`)
-      await page.goto(input.target)
+      await gotoSmart(page, input.target)
       await page.waitForLoadState('domcontentloaded')
 
       const screenMap = await new ScreenMapper(page).map()

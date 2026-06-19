@@ -9,7 +9,7 @@
  */
 
 import type { Browser, Frame, Page } from '@playwright/test'
-import { findInFrames, waitForAnyFrameSelector } from '../tools/playwright/frameUtils'
+import { findInFrames, waitForAnyFrameSelector, gotoSmart } from '../tools/playwright/frameUtils'
 import type { SystemProfile } from './systemProfile'
 
 export const INCLUDE_HINTS = /inclui|incluir|novo|nova|adicionar|cadastrar|inserir|\+/i
@@ -41,7 +41,7 @@ export async function loginToSystem(
   const pass = process.env.APP_PASSWORD
   if (!user || !pass) throw new Error('APP_USERNAME / APP_PASSWORD ausentes no .env')
 
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => null)
+  await gotoSmart(page, url, { timeout: 60_000 })
   await waitForAnyFrameSelector(page, [...sel.user, ...sel.pass], 45_000)
 
   const u = await findInFrames(page, sel.user)

@@ -19,6 +19,7 @@ import fs from 'fs'
 import path from 'path'
 import { computeFingerprint, idFromUrl } from './systemProfile'
 import { evidencesDir, resolveCode } from '../knowledge/layout'
+import { gotoSmart } from '../tools/playwright/frameUtils'
 
 export interface InputCandidate {
   frameUrl: string
@@ -84,7 +85,7 @@ export async function explore(url: string, opts: ExploreOptions = {}): Promise<E
     const context = await browser.newContext({ locale: 'pt-BR' })
     const page = await context.newPage()
 
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 }).catch(() => null)
+    await gotoSmart(page, url, { timeout: 45_000 })
     await page.waitForTimeout(settleMs)
 
     const title = await page.title().catch(() => '')

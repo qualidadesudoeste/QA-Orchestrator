@@ -18,6 +18,7 @@ import { chromium } from '@playwright/test'
 import type { Browser, Frame, Page } from '@playwright/test'
 import path from 'path'
 import { profileStore, idFromUrl, type ModuleProfile } from './systemProfile'
+import { gotoSmart } from '../tools/playwright/frameUtils'
 import { evidencesDir, resolveCode } from '../knowledge/layout'
 
 export interface NavItem {
@@ -75,7 +76,7 @@ export async function loginAndNavigate(
     const page = await context.newPage()
 
     console.log(`\n[1/4] Abrindo ${url} e logando como ${username} ...`)
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 }).catch(() => null)
+    await gotoSmart(page, url, { timeout: 45_000 })
     await page.waitForTimeout(2500)
 
     await fillFirst(page, userSel, username)

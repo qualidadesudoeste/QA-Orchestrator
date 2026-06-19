@@ -5,6 +5,7 @@ import { logger } from '@utils/logger'
 import { isProduction } from '@config/environments'
 import { ScreenMapper } from '@tools/playwright/screenMapper'
 import type { ScreenMap } from '@tools/playwright/screenMapper'
+import { gotoSmart } from '@tools/playwright/frameUtils'
 import { BddPlaywrightRunner, suiteToFeature } from './bdd'
 import { evidencesDir, resolveCode } from '../knowledge/layout'
 import type { BddStepResult } from './bdd'
@@ -49,7 +50,7 @@ export class ScenarioRunner {
       await dialog.dismiss().catch(() => {})
     })
 
-    await this.page.goto(suite.url)
+    await gotoSmart(this.page, suite.url)
     await this.page.waitForLoadState('domcontentloaded')
 
     const screenMap = await this.mapper.map()

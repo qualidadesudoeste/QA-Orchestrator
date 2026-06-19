@@ -95,3 +95,41 @@ export async function hasLoginFields(page: Page): Promise<boolean> {
   return !!password
 }
 
+export interface GotoResult {
+  /** true se navegou sem erro E não ficou em about:blank */
+  ok: boolean
+  /** a URL efetivamente usada (com protocolo normalizado) */
+  url: string
+  /** mensagem do erro de navegação, quando houve */
+  error?: string
+  /** true se a página ficou em about:blank após o goto */
+  blank: boolean
+}
+
+/**
+ * Navega de forma robusta e diagnosticável. Resolve dois problemas que antes
+ * deixavam o browser em about:blank silenciosamente:
+ *   1. URL sem protocolo → assume https:// (page.goto rejeita sem ele).
+ *   2. erro de goto engolido → aqui é logado, e devolvido em GotoResult.
+ *
+ * Não lança: devolve o resultado para o chamador decidir. Usado por todos os
+ * fluxos que abrem um alvo (register/crud, screen, navigate, explore, maker).
+ */
+export async function gotoSmart(
+  page: Page,
+  url: string,
+  opts: { timeout?: number; waitUntil?: 'domcontentloaded' | 'load' | 'networkidle' } = {}
+): Promise<GotoResult> {
+  const target = /^https?:\/\//i.test(url) ? url : `https://${url}`
+  const err = await page
+    .goto(target, { waitUntil: opts.waitUntil ?? 'domcontentloaded', timeout: opts.timeout ?? 60_000 })
+    .then(() => null)
+    .catch((e: Error) => e)
+  if (err) console.warn(`      ⚠️ navegação falhou para ${target}: ${err.message}`)
+  const blank = page.url() === 'about:blank'
+  if (blank) {
+    console.warn(`      ⚠️ página em about:blank após goto — URL inacessível? (VPN ligada? URL correta?) Alvo: ${target}`)
+  }
+  return { ok: !err && !blank, url: target, error: err?.message, blank }
+}
+

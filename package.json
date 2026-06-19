@@ -15,7 +15,7 @@
     "db:studio": "prisma studio",
     "profile:list": "ts-node src/discovery/profileCli.ts list",
     "profile:show": "ts-node src/discovery/profileCli.ts show",
-    "profile:seed-sigp": "ts-node src/discovery/profileCli.ts seed-sigp",
+    "profile:seed": "ts-node src/discovery/profileCli.ts seed",
     "explore": "ts-node src/discovery/explorer.ts",
     "discover": "ts-node src/discovery/discover.ts",
     "navigate": "ts-node src/discovery/navigator.ts",
@@ -29,6 +29,7 @@
     "inspect": "ts-node src/knowledge/inspect.ts",
     "context": "ts-node src/knowledge/context.ts",
     "rules": "ts-node src/knowledge/makerRules.ts",
+    "verify-rule": "ts-node src/scenarios/oracleVerifier.ts",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit"
   },

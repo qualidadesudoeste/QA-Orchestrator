@@ -4,18 +4,18 @@
  * Uso:
  *   ts-node src/discovery/profileCli.ts list
  *   ts-node src/discovery/profileCli.ts show <id>
- *   ts-node src/discovery/profileCli.ts seed-sigp
+ *   ts-node src/discovery/profileCli.ts seed     (lê SEED_* do .env)
  *
- * 100% offline — não depende de env, banco ou servidor.
+ * 100% offline — não depende de banco ou servidor.
  */
 
 import { profileStore } from './systemProfile'
-import { seedSigpProfile } from './seedSigp'
+import { seedProfileFromEnv } from './seedSigp'
 
 function list(): void {
   const profiles = profileStore.list()
   if (profiles.length === 0) {
-    console.log('Nenhum perfil aprendido ainda. Rode: npm run profile:seed-sigp')
+    console.log('Nenhum perfil aprendido ainda. Rode: npm run profile:seed (ou npm run discover)')
     return
   }
   console.log(`\n${profiles.length} sistema(s) na memória do agente:\n`)
@@ -30,7 +30,7 @@ function list(): void {
 
 function show(id?: string): void {
   if (!id) {
-    console.error('Informe o id. Ex.: npm run profile:show -- sigp-[REDACTED_HOST]-com-br')
+    console.error('Informe o id. Ex.: npm run profile:show -- meu-sistema-exemplo')
     process.exit(1)
   }
   const profile = profileStore.load(id)
@@ -50,11 +50,11 @@ switch (command) {
   case 'show':
     show(arg)
     break
-  case 'seed-sigp': {
-    const saved = seedSigpProfile()
-    console.log(`Perfil SIGP salvo na memória: ${saved.id} (aprendizados=${saved.learnedRuns})`)
+  case 'seed': {
+    const saved = seedProfileFromEnv()
+    console.log(`Perfil salvo na memória: ${saved.id} (aprendizados=${saved.learnedRuns})`)
     break
   }
   default:
-    console.log('Comandos: list | show <id> | seed-sigp')
+    console.log('Comandos: list | show <id> | seed')
 }

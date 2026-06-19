@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-const BASE = process.env.BASE_URL!.replace(/\/open\.do.*/, '')  // https://sigp.[REDACTED_HOST]/SIGP
+const BASE = process.env.BASE_URL!.replace(/\/open\.do.*/, '')  // raiz da app, derivada do BASE_URL (.env)
 
 test.describe('SIGP — Verificações HTTP / API', () => {
 

@@ -115,7 +115,7 @@ test.describe('SIGP — Login', () => {
     const loginFrame = page.frames().find(f => f.url().includes('openform.do')) ?? page.mainFrame()
 
     const temCampoUsuario = await loginFrame.locator(
-      'input[name="[REDACTED_SEL]"], input[name*="user" i], input[name*="login" i]'
+      'input[name*="user" i], input[name*="login" i], input[name*="usuario" i]'
     ).count() > 0
 
     const temCampoSenha = await loginFrame.locator('input[type="password"]').count() > 0
@@ -134,13 +134,15 @@ test.describe('SIGP — Login', () => {
 
 // Helper interno — busca campos em todos os frames (SIGP usa iframe para o formulário)
 async function preencherLogin(page: import('@playwright/test').Page, user: string, pass: string) {
+  const envList = (name: string): string[] =>
+    (process.env[name] || '').split(',').map(s => s.trim()).filter(Boolean)
   const userSelectors = [
-    'input[name="[REDACTED_SEL]"]', // SIGP confirmado
+    ...envList('TARGET_USER_SELECTORS'), // específicos do alvo via .env (gitignored)
     'input[name="username"]', 'input[name="login"]', 'input[name="user"]',
     'input[name="j_username"]', 'input[id*="user" i]', 'input[id*="login" i]',
   ]
   const passSelectors = [
-    'input[name="[REDACTED_SEL]"]', // SIGP confirmado
+    ...envList('TARGET_PASS_SELECTORS'),
     'input[name="password"]', 'input[name="senha"]',
     'input[name="j_password"]', 'input[type="password"]',
   ]

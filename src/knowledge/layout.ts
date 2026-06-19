@@ -48,7 +48,7 @@ export function today(): string {
 export function resolveCode(url: string): string {
   const p = profileStore.loadByUrl(url)
   if (p?.code) return p.code
-  // Deriva um código curto do host (ex.: [REDACTED_HOST]... -> CLE-HOMO...): pega o 1º rótulo.
+  // Deriva um código curto do host (ex.: meu-sistema... -> MEU-SISTEMA...): pega o 1º rótulo.
   try {
     const host = new URL(url).host
     return host.split('.')[0].toUpperCase()

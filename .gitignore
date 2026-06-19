@@ -34,6 +34,18 @@ test-results/
 systems/**/screenshots/
 systems/**/executions/
 systems/**/system_info/credentials.md
+
+# ── CONHECIMENTO DE CLIENTE = CONFIDENCIAL, SÓ LOCAL (nunca commitar) ──
+# Regra de negócio do cliente (tabelas, SQL, exports Maker, URLs, menus,
+# arquitetura, padrões aprendidos) fica APENAS no disco. O Git versiona o
+# motor do agente e a estrutura de pastas (.gitkeep), não o conhecimento.
+systems/**/system_info/
+systems/**/knowledge/
+systems/**/learned_patterns/
+systems/**/*.xml
+# Log operacional/sessão com detalhe de cliente — só local
+NOTES.local.md
+CLAUDE.local.md
 # Evidência é SEMPRE por sistema (systems/<CODE>/evidences/...): versiona a
 # estrutura (.gitkeep) mas nunca os binários/telas internas.
 systems/**/evidences/**/*.png
@@ -43,6 +55,7 @@ systems/**/evidences/**/*.webm
 systems/**/evidences/**/*.zip
 systems/**/evidences/**/*.json
 systems/**/evidences/**/*.feature
+systems/**/evidences/**/*.md
 
 # Prisma
 prisma/migrations/
@@ -63,3 +76,6 @@ Thumbs.db
 *.cert
 secrets/
 vault-token
+
+# Perfis aprendidos = config por sistema (hosts/seletores) — só local
+data/profiles/*.json

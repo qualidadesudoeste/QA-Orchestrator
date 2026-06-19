@@ -4,76 +4,15 @@
 
 ---
 
-## Onde paramos (atualizar a cada sessão)
+## Confidencialidade
 
-**Última sessão:** 2026-06-11
+Este arquivo é **versionado** — só conteúdo genérico do agente. Detalhe específico
+de cliente (URLs, usuários, seletores, tabelas, SQL, regras) **nunca** vai aqui:
+fica local em `CLAUDE.local.md` e em `systems/<CODE>/` (gitignored). O estado
+detalhado de cada sessão (o "onde paramos") está no `CLAUDE.local.md`.
 
-**Status:** iframe detectado com sucesso — aguardando confirmação do nome exato dos campos do formulário SIGP para fixar o seletor.
-
-**O que foi feito:**
-- Estrutura completa de pastas criada e publicada no GitHub
-- `package.json` com toda a stack definida
-- `tsconfig.json`, `playwright.config.ts`, `docker-compose.yml`
-- `prisma/schema.prisma` com modelos BugReport, KnowledgeEntry, TestRun
-- `src/agents/orchestrator.ts` — motor principal (Codex Sonnet)
-- `src/config/constants.ts` — Opus desabilitado, Sonnet padrão, Haiku para tarefas leves
-- `src/config/environments.ts` — validação de env vars com Zod
-- `src/memory/knowledgeBase.ts` — memória evolutiva de bugs com detecção de reincidência
-- `src/reports/bugReport.ts` — geração de relatório estruturado
-- `src/tools/git/gitAnalyzer.ts` — análise de commits e PRs via GitHub API
-- `src/tools/security/securityScanner.ts` — integração OWASP ZAP
-- `src/utils/` — logger, mascaramento LGPD, dados fictícios pt_BR
-- `.github/workflows/qa-pipeline.yml` — CI automático em todo PR
-- **`src/tools/playwright/screenMapper.ts`** ✓
-- **`src/tools/playwright/formTester.ts`** ✓
-- **`src/tools/playwright/gridHandler.ts`** ✓
-- **`src/tools/playwright/pageActions.ts`** ✓
-- **`src/scenarios/types.ts`** ✓
-- **`src/scenarios/generator.ts`** ✓
-- **`src/scenarios/runner.ts`** ✓
-- **`src/tools/database/`** ✓ — multi-banco: PostgreSQL, MySQL, Oracle, MongoDB
-- **`frontend/`** ✓ — pasta reservada (só .gitkeep)
-- **`src/tools/security/headerAnalyzer.ts`** ✓
-- **`src/tools/security/authTester.ts`** ✓
-- **`src/agents/securityAgent.ts`** ✓
-- **`tests/sigp/`** ✓ — login.spec, dashboard.spec, api/health.spec, security.spec
-- **`tests/sigp/setup/auth.setup.ts`** ✓ — **ATUALIZADO (2x nesta sessão):**
-  - Usa `page.frames()` para varrer todos os iframes
-  - `printFrameTree()` lista TODOS os inputs (nome, tipo, id, visible) de cada frame
-  - Seletores ampliados com variações SIGP (nm_login, ds_login, cd_usuario, etc.)
-  - Screenshots automáticos: `sigp-login-before.png`, `sigp-login-after.png`
-
-**O que descobrimos sobre o SIGP:**
-- Frame de login: `openform.do?sys=ARH&action=openform&[REDACTED]&firstLoad=true`
-- Frame `[1]` tem **14 inputs** e **4 botões**
-- Campos detectados pelo setup (usando seletor genérico de fallback):
-  - Usuário: `input[type="text"]` — **ainda não confirmamos o `name` exato**
-  - Senha: `input[type="password"]` ✓
-  - Botão: `button:has-text("Entrar")` ✓
-- **Pendência:** rodar setup de novo e colar o log dos 14 inputs para fixar o seletor correto do campo usuário
-
-**Sistema alvo atual:** SIGP — `https://sigp.[REDACTED_HOST]/SIGP/open.do?sys=ARH`
-Credenciais em `.env` local (gitignored).
-
-**Próximos passos (ainda não feitos):**
-1. Rodar: `npx playwright test --project=sigp-setup`
-2. Colar no chat o bloco `input[0..13]` do log — Codex adiciona o seletor exato do campo usuário
-3. Confirmar que o setup salva `playwright/.auth/sigp.json` com sucesso
-4. Rodar: `npx playwright test --project=sigp-functional`
-5. Configurar Qdrant para memória vetorial
-6. Implementar relatório final consolidado
-7. Mapear módulos do SIGP após login funcional (cadastros, lançamentos, relatórios)
-
-**Nota multi-banco:**
-- `DB_TYPE` no `.env` escolhe o adaptador: `postgres | mysql | oracle | mongodb`
-- Oracle está em `optionalDependencies` — se não tiver Instant Client instalado, avisa e não quebra o projeto
-- Frontend é responsabilidade de outro colaborador — não alterar a pasta `frontend/`
-
-**Pendência de infraestrutura:**
-- Renomear pasta `Agente de IA` → `QA-Orchestrator` (fazer fora do Codex):
-  ```powershell
-  Rename-Item -Path "C:\GitHub\Agente de IA" -NewName "QA-Orchestrator"
-  ```
+> Config por sistema (hosts/seletores) vem do `.env` (`SEED_*`, `TARGET_*`) e dos
+> perfis em `data/profiles/*.json` (gitignored) — nunca fixa no código.
 
 ---
 

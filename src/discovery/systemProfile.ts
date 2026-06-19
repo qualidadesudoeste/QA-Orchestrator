@@ -2,7 +2,7 @@
  * SystemProfile — a memória do que o agente APRENDEU sobre um sistema-alvo.
  *
  * Esta é a peça central da virada "testar qualquer sistema": em vez de seletores
- * fixos no código (ex.: [REDACTED_SEL] do SIGP), o conhecimento de cada sistema
+ * fixos no código, o conhecimento de cada sistema
  * vive aqui, como dado persistido em disco. O agente descobre uma vez, guarda o
  * perfil e reusa nas próximas execuções — reaprendendo só quando a tela muda.
  *

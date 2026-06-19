@@ -10,9 +10,13 @@ const AUTH_FILE = path.join('playwright', '.auth', 'sigp.json')
 fs.mkdirSync(path.dirname(AUTH_FILE), { recursive: true })
 fs.mkdirSync(path.join('evidence', 'screenshots'), { recursive: true })
 
+// Seletores específicos do sistema-alvo NÃO ficam fixos no código (confidencial):
+// vêm de variáveis de ambiente (CSV) — ex.: TARGET_USER_SELECTORS no .env (gitignored).
+const envList = (name: string): string[] =>
+  (process.env[name] || '').split(',').map(s => s.trim()).filter(Boolean)
+
 const USER_SELECTORS = [
-  'input[name="[REDACTED_SEL]"]',
-  'input#[REDACTED_SEL]',
+  ...envList('TARGET_USER_SELECTORS'),
   'input[name="username"]',
   'input[name="login"]',
   'input[name="user"]',
@@ -35,8 +39,7 @@ const USER_SELECTORS = [
 ]
 
 const PASS_SELECTORS = [
-  'input[name="[REDACTED_SEL]"]',
-  'input#[REDACTED_SEL]',
+  ...envList('TARGET_PASS_SELECTORS'),
   'input[type="password"]',
   'input[name="password"]',
   'input[name="senha"]',

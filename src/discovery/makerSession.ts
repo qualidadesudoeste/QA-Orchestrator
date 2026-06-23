@@ -8,8 +8,9 @@
  * sistemas); quando um sistema novo não casar, melhora-se AQUI, não com remendo.
  */
 
-import type { Browser, Frame, Page } from '@playwright/test'
+import type { Browser, Frame, Locator, Page } from '@playwright/test'
 import { findInFrames, waitForAnyFrameSelector, gotoSmart } from '../tools/playwright/frameUtils'
+import { resolvePassword } from '../utils/prompt'
 import type { SystemProfile } from './systemProfile'
 
 export const INCLUDE_HINTS = /inclui|incluir|novo|nova|adicionar|cadastrar|inserir|\+/i
@@ -18,6 +19,14 @@ export const SUCCESS_HINTS = /sucesso|salvo|gravad|inclu[íi]d|cadastrad|registr
 export const EDIT_HINTS = /editar|alterar|atualizar|modificar|edit/i
 export const DELETE_HINTS = /excluir|remover|apagar|deletar|delete/i
 export const CONFIRM_HINTS = /^sim$|confirmar|^confirma$|^ok$|excluir|remover|^apagar$/i
+
+/** Seletores de ABA (telas Maker têm Cadastro/Localizar e outras). */
+export const TAB_SELECTORS = [
+  '[role="tab"]',
+  '[class*="aba" i]',
+  '[class*="tab" i]:not([class*="table" i])',
+  'a[onclick*="aba" i]', 'a[onclick*="tab" i]', 'li[onclick*="tab" i]',
+]
 
 export function norm(s: string): string {
   return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase()
@@ -38,8 +47,8 @@ export async function loginToSystem(
   sel: { user: string[]; pass: string[]; submit: string[] }
 ): Promise<boolean> {
   const user = process.env.APP_USERNAME
-  const pass = process.env.APP_PASSWORD
-  if (!user || !pass) throw new Error('APP_USERNAME / APP_PASSWORD ausentes no .env')
+  if (!user) throw new Error('APP_USERNAME ausente no .env')
+  const pass = await resolvePassword(user)
 
   await gotoSmart(page, url, { timeout: 60_000 })
   await waitForAnyFrameSelector(page, [...sel.user, ...sel.pass], 45_000)
@@ -59,6 +68,23 @@ export async function loginToSystem(
     if (!(await findInFrames(page, sel.pass, undefined, 400))) return true
   }
   return false
+}
+
+/**
+ * Garante a sessão viva SEM relogar à toa: só reloga se o campo de senha
+ * reaparecer (sessão caiu/expirou). A senha vem do cache em memória
+ * (resolvePassword) — não pergunta de novo. Use entre as fases de um teste
+ * longo (CRUD em sessão única); em sistemas lentos evita logins repetidos.
+ */
+export async function ensureLoggedIn(
+  page: Page,
+  url: string,
+  sel: { user: string[]; pass: string[]; submit: string[] }
+): Promise<boolean> {
+  const passField = await findInFrames(page, sel.pass, undefined, 600)
+  if (!passField) return true // sessão ainda viva
+  console.log('      ⚠️ sessão caiu — relogando automaticamente ...')
+  return loginToSystem(page, url, sel)
 }
 
 /** Abre a tela pelo nome do menu: expande grupos colapsados e clica no item-folha. */
@@ -225,9 +251,14 @@ export async function detectSuccess(page: Page, token: string): Promise<boolean>
 
 /** Digita um termo na busca da Localizar e dispara (Enter + ícone de busca). */
 export async function searchInGrid(page: Page, term: string): Promise<boolean> {
+  // `:not([placeholder*="menu"])` exclui a barra "Buscar no menu" da sidebar — sem
+  // isso o agente filtrava o MENU em vez da grade e contava 0 (falso negativo).
   const searchSel = [
-    'input[placeholder*="buscar" i]', 'input[placeholder*="pesquis" i]', 'input[placeholder*="search" i]',
-    'input[aria-label*="buscar" i]', 'input[type="search"]',
+    'input[placeholder*="buscar" i]:not([placeholder*="menu" i])',
+    'input[placeholder*="pesquis" i]:not([placeholder*="menu" i])',
+    'input[placeholder*="search" i]:not([placeholder*="menu" i])',
+    'input[aria-label*="buscar" i]:not([aria-label*="menu" i])',
+    'input[type="search"]:not([placeholder*="menu" i])',
   ]
   const m = await findInFrames(page, searchSel, undefined, 800)
   if (!m) return false
@@ -237,15 +268,103 @@ export async function searchInGrid(page: Page, term: string): Promise<boolean> {
   return true
 }
 
+// ── ABAS (Cadastro/Localizar/...) — telas Maker são organizadas em abas ─────
+
+export interface TabRef { name: string; frameUrl: string }
+
+/** Lista as abas VISÍVEIS da tela (texto único), varrendo todos os frames. */
+export async function findTabs(page: Page): Promise<TabRef[]> {
+  const out: TabRef[] = []
+  const seen = new Set<string>()
+  for (const frame of page.frames()) {
+    for (const sel of TAB_SELECTORS) {
+      const els = await frame.locator(sel).all().catch(() => [])
+      for (const e of els) {
+        if (!(await e.isVisible().catch(() => false))) continue
+        const t = ((await e.innerText().catch(() => '')) || '').trim().replace(/\s+/g, ' ')
+        if (!t || t.length > 30) continue
+        const key = norm(t)
+        if (seen.has(key)) continue
+        seen.add(key)
+        out.push({ name: t, frameUrl: frame.url() })
+      }
+    }
+  }
+  return out
+}
+
+/** Clica numa aba pelo nome (prioriza match exato; varre todos os frames). */
+export async function goToTab(page: Page, name: string): Promise<boolean> {
+  const want = norm(name)
+  for (const frame of page.frames()) {
+    for (const sel of TAB_SELECTORS) {
+      const els = await frame.locator(sel).all().catch(() => [])
+      for (const e of els) {
+        if (!(await e.isVisible().catch(() => false))) continue
+        const t = norm(((await e.innerText().catch(() => '')) || '').trim())
+        if (t === want || (t.includes(want) && t.length < want.length + 12)) {
+          await e.click().catch(() => {})
+          await page.waitForTimeout(1200)
+          return true
+        }
+      }
+    }
+  }
+  return false
+}
+
 /**
- * Reverificação DEFINITIVA pós-Create/Update: reabre a tela (volta à Localizar),
- * filtra pelo token e conta as linhas que o contêm. É a prova independente de
- * que o registro está mesmo persistido na grade — não confia só no retorno
- * fraco do Maker (toast/form-limpo). Retorna quantas linhas casaram (>0 = ok).
+ * Fecha o form em edição (Maker mapeia "Cancelar (Esc)"): clica um controle de
+ * cancelar OU pressiona Esc. IMPORTANTE: enquanto o form está em edição, a aba
+ * "Localizar" nem é renderizada — só aparece depois de sair do modo edição.
+ * Evita "Sair"/"Fechar" (fecham a TELA inteira), mira só "Cancelar".
+ */
+export async function closeEditForm(page: Page): Promise<boolean> {
+  for (const frame of page.frames()) {
+    const els = await frame.locator('a[href="#!"], a[onclick], button, [role="button"], [title]').all().catch(() => [])
+    for (const e of els) {
+      if (!(await e.isVisible().catch(() => false))) continue
+      const label = ((await e.getAttribute('title').catch(() => '')) || (await e.innerText().catch(() => '')) || '').trim()
+      if (/cancelar/i.test(label)) {
+        await e.click().catch(() => {})
+        await page.waitForTimeout(900)
+        return true
+      }
+    }
+  }
+  await page.keyboard.press('Escape').catch(() => {})
+  await page.waitForTimeout(700)
+  return false
+}
+
+/**
+ * Garante que a tela está na aba "Localizar" (a grade). Se o form estiver em
+ * edição (sem a aba Localizar visível), fecha o form primeiro e tenta de novo.
+ */
+export async function ensureOnGrid(page: Page): Promise<boolean> {
+  if (await goToTab(page, 'Localizar')) return true
+  await closeEditForm(page)            // sai do modo edição → revela a aba Localizar
+  await page.waitForTimeout(800)
+  return goToTab(page, 'Localizar')
+}
+
+/**
+ * Reverificação DEFINITIVA pós-Create/Update: garante a aba "Localizar" (a
+ * grade — telas Maker ficam em "Cadastro"/form após criar, e a aba Localizar
+ * só aparece ao sair da edição), filtra pelo token e conta as linhas que o
+ * contêm. Prova independente de que o registro está mesmo persistido — não
+ * confia só no retorno fraco do Maker (toast/form-limpo). Retorna nº de linhas.
  */
 export async function reopenAndCount(page: Page, screenName: string, token: string): Promise<number> {
-  await openScreen(page, screenName).catch(() => false)
-  await page.waitForTimeout(2500)
+  // 1) tenta cair na grade fechando o form se preciso (caminho do redesenho novo)
+  let onGrid = await ensureOnGrid(page).catch(() => false)
+  // 2) fallback: reabrir a tela pelo menu e tentar de novo (telas clássicas)
+  if (!onGrid) {
+    await openScreen(page, screenName).catch(() => false)
+    await page.waitForTimeout(2500)
+    onGrid = await ensureOnGrid(page).catch(() => false)
+  }
+  await page.waitForTimeout(800)
   await searchInGrid(page, token).catch(() => false)
   await page.waitForTimeout(1500)
   return countRowsWithToken(page, token)
@@ -270,30 +389,46 @@ export async function countRowsWithToken(page: Page, token: string): Promise<num
  */
 export async function clickRowAction(page: Page, token: string, kind: 'edit' | 'delete'): Promise<boolean> {
   const hints = kind === 'edit' ? EDIT_HINTS : DELETE_HINTS
-  const iconSel = kind === 'edit'
-    ? '[title*="edit" i], [title*="alter" i], [class*="edit" i], [class*="pencil" i], [class*="fa-pencil"], [class*="fa-edit"], a, button'
-    : '[title*="exclu" i], [title*="remov" i], [title*="delet" i], [class*="delet" i], [class*="remov" i], [class*="trash" i], [class*="lixeira" i], [class*="fa-trash"], a, button'
+  const clsRe = kind === 'edit' ? /pencil|edit|alter|lapis/i : /trash|lixeira|remov|delet|exclu/i
+  // candidatos a botão de AÇÃO na linha (na grade Maker são ícones clicáveis)
+  const ctrlSel = 'button, a[onclick], a[href="#!"], a[href="#"], [role="button"]'
 
   for (const frame of page.frames()) {
     const rows = await frame.locator('tr, [role="row"]').all().catch(() => [])
     for (const r of rows) {
       const t = (await r.innerText().catch(() => '')) || ''
       if (!t.includes(token)) continue
-      // dentro da linha do token, procura o controle de ação
-      const controls = await r.locator(iconSel).all().catch(() => [])
-      for (const c of controls) {
+
+      // coleta os controles visíveis da linha (na ordem do DOM)
+      const raw = await r.locator(ctrlSel).all().catch(() => [])
+      const controls: { h: Locator; hay: string }[] = []
+      for (const c of raw) {
         if (!(await c.isVisible().catch(() => false))) continue
         const title = (await c.getAttribute('title').catch(() => '')) || ''
         const aria = (await c.getAttribute('aria-label').catch(() => '')) || ''
         const cls = (await c.getAttribute('class').catch(() => '')) || ''
+        const inner = (await c.innerHTML().catch(() => '')) || '' // pega classe do <i> de ícone dentro do botão
         const text = ((await c.innerText().catch(() => '')) || '').trim()
-        const hay = `${title} ${aria} ${cls} ${text}`
-        if (hints.test(hay) || (kind === 'delete' && /trash|lixeira|remov|delet|exclu/i.test(cls)) || (kind === 'edit' && /pencil|edit|alter/i.test(cls))) {
-          await c.click().catch(() => {})
+        controls.push({ h: c, hay: `${title} ${aria} ${cls} ${inner} ${text}` })
+      }
+      if (!controls.length) continue
+
+      // 1) match PRECISO por dica/classe (title/aria/classe do botão ou do ícone interno)
+      for (const c of controls) {
+        if (hints.test(c.hay) || clsRe.test(c.hay)) {
+          await c.h.click().catch(() => {})
           await page.waitForTimeout(1500)
           return true
         }
       }
+
+      // 2) fallback POSICIONAL (seguro: só na linha do token do agente):
+      //    convenção Maker → 1º ícone = editar, último = excluir.
+      const idx = kind === 'edit' ? 0 : controls.length - 1
+      console.log(`      (ação "${kind}" por posição: ícone ${idx + 1}/${controls.length} da linha do token)`)
+      await controls[idx].h.click().catch(() => {})
+      await page.waitForTimeout(1500)
+      return true
     }
   }
   return false
@@ -326,6 +461,37 @@ export async function confirmDialog(page: Page, timeoutMs = 7000): Promise<boole
       }
     }
     await page.waitForTimeout(400)
+  }
+  return false
+}
+
+/**
+ * Fecha um modal informativo/de erro (ex.: "Já existe um registro" / "Campo
+ * obrigatório") clicando OK/Fechar/Entendi. Diferente de confirmDialog, é só
+ * para RECONHECER um aviso — nunca confirma uma ação destrutiva. Espera o modal
+ * renderizar (poll curto) e prioriza botões dentro de containers de modal.
+ */
+export async function dismissModal(page: Page, timeoutMs = 4000): Promise<boolean> {
+  const labels = [/^ok$/i, /^fechar$/i, /^entendi$/i, /^ciente$/i, /^continuar$/i, /^voltar$/i]
+  const scopes = ['[role="dialog"]', '[class*="modal" i]', '[class*="swal" i]', '[class*="dialog" i]', '']
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    for (const scope of scopes) {
+      for (const frame of page.frames()) {
+        const sel = scope ? `${scope} button, ${scope} a, ${scope} [role="button"]` : 'button, a[role="button"], [role="button"], input[type="button"]'
+        const els = await frame.locator(sel).all().catch(() => [])
+        for (const e of els) {
+          if (!(await e.isVisible().catch(() => false))) continue
+          const label = ((await e.innerText().catch(() => '')) || (await e.getAttribute('value').catch(() => '')) || '').trim()
+          if (label.length > 0 && label.length <= 15 && labels.some(re => re.test(label))) {
+            await e.click().catch(() => {})
+            await page.waitForTimeout(600)
+            return true
+          }
+        }
+      }
+    }
+    await page.waitForTimeout(350)
   }
   return false
 }

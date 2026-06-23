@@ -17,6 +17,7 @@ import type { Browser, Frame, Page } from '@playwright/test'
 import fs from 'fs'
 import path from 'path'
 import { findInFrames, waitForAnyFrameSelector, gotoSmart } from '../tools/playwright/frameUtils'
+import { resolvePassword } from '../utils/prompt'
 import { profileStore } from './systemProfile'
 import { getProvider } from './aiProvider'
 import { screenDir, screenshotsDir, resolveCode } from '../knowledge/layout'
@@ -108,8 +109,8 @@ export async function testScreen(url: string, screenName: string, opts: { headed
 
 async function login(page: Page, userSel: string[], passSel: string[], submitSel: string[]): Promise<boolean> {
   const user = process.env.APP_USERNAME
-  const pass = process.env.APP_PASSWORD
-  if (!user || !pass) throw new Error('APP_USERNAME / APP_PASSWORD ausentes no .env')
+  if (!user) throw new Error('APP_USERNAME ausente no .env')
+  const pass = await resolvePassword(user)
   const u = await findInFrames(page, userSel)
   if (!u) return false
   await u.locator.fill(user)

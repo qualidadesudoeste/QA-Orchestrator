@@ -20,10 +20,10 @@ import fs from 'fs'
 import path from 'path'
 import { profileStore } from './systemProfile'
 import { resolveCode, executionDir, screenshotsDir } from '../knowledge/layout'
-import { registerRecord } from './register'
 import {
   selectorsFromProfile, loginToSystem, openScreen, pickFormFrame, fillForm,
   clickSave, detectSuccess, searchInGrid, countRowsWithToken, clickRowAction, confirmDialog,
+  clickInclude, ensureOnGrid, ensureLoggedIn, reopenAndCount,
 } from './makerSession'
 import { attachConsoleCapture } from '../tools/playwright/capture'
 import type { ConsoleCapture } from '../tools/playwright/capture'
@@ -181,21 +181,124 @@ function learn(
   fs.writeFileSync(path.join(dir, `crud-${op}-${screenName.replace(/\s+/g, '_')}.md`), log, 'utf-8')
 }
 
-/** Ciclo CRUD completo num único registro rastreável. */
+/**
+ * Ciclo CRUD completo num ÚNICO registro rastreável, em SESSÃO ÚNICA:
+ * abre 1 browser, loga 1 vez e roda Create→Read→Update→Delete na MESMA página.
+ * Entre as fases, `ensureLoggedIn` só reloga se a sessão tiver caído (não fica
+ * relogando à toa — essencial p/ sistemas lentos e telas complexas).
+ */
 export async function runFull(url: string, screenName: string, opts: { headed?: boolean }): Promise<void> {
+  const code = resolveCode(url)
+  const shotDir = screenshotsDir(code, screenName)
+  const profile = profileStore.loadByUrl(url)
+  const sel = selectorsFromProfile(profile)
   const token = `QA CRUD ${Date.now()}`
-  console.log(`\n========== CRUD COMPLETO em "${screenName}" (token: ${token}) ==========`)
-  console.log('\n--- C: CREATE ---')
-  const c = await registerRecord(url, screenName, { headed: opts.headed, value: token })
-  console.log('\n--- R: READ/SEARCH ---')
-  const r = await runCrud('search', url, screenName, { headed: opts.headed, token })
-  console.log('\n--- U: UPDATE/EDIT ---')
-  const u = await runCrud('edit', url, screenName, { headed: opts.headed, token })
-  console.log('\n--- D: DELETE ---')
-  const d = await runCrud('delete', url, screenName, { headed: opts.headed, token: u.token.startsWith(token) ? token : token })
+  const evidence: string[] = []
+  const shot = async (name: string, page: Page) => {
+    const p = path.join(shotDir, name)
+    await page.screenshot({ path: p, fullPage: true }).catch(() => {})
+    evidence.push(p)
+  }
 
-  console.log(`\n========== RESUMO CRUD ==========`)
-  console.log(`Create: ${c.success ? 'OK' : 'revisar'} | Read: ${r.matched} achado(s) | Update: ${u.confirmed ? 'OK' : 'revisar'} | Delete: ${d.confirmed ? 'OK' : 'revisar'}`)
+  let browser: Browser | null = null
+  let consoleCap: ConsoleCapture | null = null
+  let cOk = false, rFound = 0, uOk = false, dOk = false
+  console.log(`\n========== CRUD COMPLETO (SESSÃO ÚNICA) em "${screenName}" — token: ${token} ==========`)
+  try {
+    browser = await chromium.launch({ headless: !opts.headed, slowMo: opts.headed ? 400 : 0 })
+    const page = await (await browser.newContext({ locale: 'pt-BR' })).newPage()
+    consoleCap = attachConsoleCapture(page)
+
+    console.log('\n[login] Logando (uma única vez) ...')
+    if (!(await loginToSystem(page, url, sel))) { console.log('  ✗ login não confirmado'); return }
+    console.log('  ✓ logado')
+    await page.waitForTimeout(4000)
+
+    // ── C: CREATE ─────────────────────────────────────────────────────────
+    console.log('\n--- C: CREATE ---')
+    await ensureLoggedIn(page, url, sel)
+    await openScreen(page, screenName); await page.waitForTimeout(2500)
+    const formOpened = await clickInclude(page); await page.waitForTimeout(2000)
+    if (formOpened) {
+      const cFrame = await pickFormFrame(page)
+      const filled = await fillForm(cFrame, token)
+      console.log(`  ✓ ${filled} campo(s) preenchido(s)`)
+      await clickSave(page); await page.waitForTimeout(3000)
+      const sig = await detectSuccess(page, token)
+      const inGrid = await reopenAndCount(page, screenName, token)
+      cOk = sig || inGrid > 0
+      console.log(`  Create: ${cOk ? 'OK' : 'revisar'} (sinal:${sig ? 'sim' : 'não'} | grade:${inGrid})`)
+    } else {
+      console.log('  ✗ não achei o botão de incluir')
+    }
+    await shot('full-create.png', page)
+
+    // ── R: READ ───────────────────────────────────────────────────────────
+    console.log('\n--- R: READ ---')
+    await ensureLoggedIn(page, url, sel)
+    await ensureOnGrid(page)
+    await searchInGrid(page, token); await page.waitForTimeout(1200)
+    rFound = await countRowsWithToken(page, token)
+    console.log(`  Read: ${rFound} linha(s) com o token`)
+    await shot('full-read.png', page)
+
+    // ── U: UPDATE (edita o PRÓPRIO registro) ──────────────────────────────
+    console.log('\n--- U: UPDATE ---')
+    await ensureLoggedIn(page, url, sel)
+    await ensureOnGrid(page)
+    await searchInGrid(page, token); await page.waitForTimeout(1000)
+    let editedToken = token
+    if (await clickRowAction(page, token, 'edit')) {
+      await page.waitForTimeout(2500)
+      editedToken = `${token} EDITADO`
+      const uFrame = await pickFormFrame(page)
+      const ed = await fillForm(uFrame, editedToken)
+      await clickSave(page); await page.waitForTimeout(3000)
+      const sig = await detectSuccess(page, editedToken)
+      const g = await reopenAndCount(page, screenName, editedToken)
+      uOk = sig || g > 0
+      console.log(`  Update: ${uOk ? 'OK' : 'revisar'} (${ed} campo(s) → "${editedToken}" | grade:${g})`)
+    } else {
+      console.log('  ⚠️ não achei o ícone de editar na linha (revisar clickRowAction)')
+    }
+    await shot('full-update.png', page)
+
+    // ── D: DELETE (exclui o PRÓPRIO registro) ─────────────────────────────
+    console.log('\n--- D: DELETE ---')
+    await ensureLoggedIn(page, url, sel)
+    await ensureOnGrid(page)
+    const delToken = uOk ? editedToken : token
+    await searchInGrid(page, delToken); await page.waitForTimeout(1000)
+    const before = await countRowsWithToken(page, delToken)
+    if (before > 0 && await clickRowAction(page, delToken, 'delete')) {
+      await page.waitForTimeout(1200)
+      await confirmDialog(page); await page.waitForTimeout(2800)
+      await ensureOnGrid(page)
+      await searchInGrid(page, delToken); await page.waitForTimeout(1200)
+      const after = await countRowsWithToken(page, delToken)
+      dOk = after < before
+      console.log(`  Delete: ${dOk ? `OK (${before}→${after})` : `revisar (${before}→${after})`}`)
+    } else {
+      console.log('  ⚠️ nada para excluir ou não achei o ícone de excluir na linha')
+    }
+    await shot('full-delete.png', page)
+
+    console.log(`\n========== RESUMO CRUD (sessão única, 1 login) ==========`)
+    console.log(`Create: ${cOk ? 'OK' : 'revisar'} | Read: ${rFound} | Update: ${uOk ? 'OK' : 'revisar'} | Delete: ${dOk ? 'OK' : 'revisar'}`)
+    learn(code, 'full', screenName, { token, matched: rFound, acted: uOk || dOk, confirmed: cOk && dOk, evidence })
+    if (opts.headed) await page.waitForTimeout(6000)
+  } finally {
+    try {
+      const errs = consoleCap?.errors() ?? []
+      if (errs.length) {
+        const p = path.join(shotDir, 'full-console-erros.json')
+        fs.writeFileSync(p, JSON.stringify(errs, null, 2), 'utf-8')
+        console.log(`      ⚠️ ${errs.length} erro(s) de console/JS — salvo em ${path.basename(p)}`)
+      }
+      consoleCap?.detach()
+    } catch { /* evidência é best-effort */ }
+    await browser?.close().catch(() => {})
+  }
 }
 
 if (require.main === module) {

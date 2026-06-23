@@ -8,7 +8,7 @@
  * sistemas); quando um sistema novo não casar, melhora-se AQUI, não com remendo.
  */
 
-import type { Browser, Frame, Page } from '@playwright/test'
+import type { Browser, Frame, Locator, Page } from '@playwright/test'
 import { findInFrames, waitForAnyFrameSelector, gotoSmart } from '../tools/playwright/frameUtils'
 import { resolvePassword } from '../utils/prompt'
 import type { SystemProfile } from './systemProfile'
@@ -389,30 +389,46 @@ export async function countRowsWithToken(page: Page, token: string): Promise<num
  */
 export async function clickRowAction(page: Page, token: string, kind: 'edit' | 'delete'): Promise<boolean> {
   const hints = kind === 'edit' ? EDIT_HINTS : DELETE_HINTS
-  const iconSel = kind === 'edit'
-    ? '[title*="edit" i], [title*="alter" i], [class*="edit" i], [class*="pencil" i], [class*="fa-pencil"], [class*="fa-edit"], a, button'
-    : '[title*="exclu" i], [title*="remov" i], [title*="delet" i], [class*="delet" i], [class*="remov" i], [class*="trash" i], [class*="lixeira" i], [class*="fa-trash"], a, button'
+  const clsRe = kind === 'edit' ? /pencil|edit|alter|lapis/i : /trash|lixeira|remov|delet|exclu/i
+  // candidatos a botão de AÇÃO na linha (na grade Maker são ícones clicáveis)
+  const ctrlSel = 'button, a[onclick], a[href="#!"], a[href="#"], [role="button"]'
 
   for (const frame of page.frames()) {
     const rows = await frame.locator('tr, [role="row"]').all().catch(() => [])
     for (const r of rows) {
       const t = (await r.innerText().catch(() => '')) || ''
       if (!t.includes(token)) continue
-      // dentro da linha do token, procura o controle de ação
-      const controls = await r.locator(iconSel).all().catch(() => [])
-      for (const c of controls) {
+
+      // coleta os controles visíveis da linha (na ordem do DOM)
+      const raw = await r.locator(ctrlSel).all().catch(() => [])
+      const controls: { h: Locator; hay: string }[] = []
+      for (const c of raw) {
         if (!(await c.isVisible().catch(() => false))) continue
         const title = (await c.getAttribute('title').catch(() => '')) || ''
         const aria = (await c.getAttribute('aria-label').catch(() => '')) || ''
         const cls = (await c.getAttribute('class').catch(() => '')) || ''
+        const inner = (await c.innerHTML().catch(() => '')) || '' // pega classe do <i> de ícone dentro do botão
         const text = ((await c.innerText().catch(() => '')) || '').trim()
-        const hay = `${title} ${aria} ${cls} ${text}`
-        if (hints.test(hay) || (kind === 'delete' && /trash|lixeira|remov|delet|exclu/i.test(cls)) || (kind === 'edit' && /pencil|edit|alter/i.test(cls))) {
-          await c.click().catch(() => {})
+        controls.push({ h: c, hay: `${title} ${aria} ${cls} ${inner} ${text}` })
+      }
+      if (!controls.length) continue
+
+      // 1) match PRECISO por dica/classe (title/aria/classe do botão ou do ícone interno)
+      for (const c of controls) {
+        if (hints.test(c.hay) || clsRe.test(c.hay)) {
+          await c.h.click().catch(() => {})
           await page.waitForTimeout(1500)
           return true
         }
       }
+
+      // 2) fallback POSICIONAL (seguro: só na linha do token do agente):
+      //    convenção Maker → 1º ícone = editar, último = excluir.
+      const idx = kind === 'edit' ? 0 : controls.length - 1
+      console.log(`      (ação "${kind}" por posição: ícone ${idx + 1}/${controls.length} da linha do token)`)
+      await controls[idx].h.click().catch(() => {})
+      await page.waitForTimeout(1500)
+      return true
     }
   }
   return false

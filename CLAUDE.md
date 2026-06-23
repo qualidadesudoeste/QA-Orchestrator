@@ -35,6 +35,12 @@ Tudo isso é **confidencial e fica apenas local** (gitignored):
 
 **Estado de código:** `tsc --noEmit` limpo. Deps instaladas (`npm install`); restam 8 vulnerabilidades transitivas da stack LangChain (só somem com upgrade major → "Pode Seguir").
 
+### 🎯 Visão de produto (norteia tudo daqui pra frente)
+- **Este repo é o BACK-END** (o motor). **Outra pessoa vai montar o FRONTEND** que vai consumi-lo. ⇒ cada capacidade deve ser **dirigível por código/API** (entrada/saída estruturada, **credencial injetável** via `setPassword`/`setPasswordProvider` em `prompt.ts`), nunca presa só à CLI.
+- **Pensar no agente como um AGENTE DE IA PRÓPRIO** em 3 camadas: **ferramentas** (blocos determinísticos = mãos) → **cérebro** (IA/Claude planeja e decide, `agents/orchestrator.ts` + LangGraph) → **API** (o frontend conversa).
+- **O agente APRENDE, não só testa:** loop **percebe → aprende → guarda → consulta o que já sabe → age melhor → aprende com o resultado**. Memória evolutiva (`memory/knowledgeBase.ts` + Prisma + Qdrant) **já é o princípio fundador** — o `orchestrator` já realimenta bugs reincidentes na geração de cenários.
+- **⚠️ GAP atual / próximo passo:** as ferramentas robustas de Maker (`register`/`crud`/`validate`/`tabs`/oráculo) **gravam só em arquivo e NÃO consultam/alimentam a `KnowledgeBase`**; o `orchestrator` ainda usa o `ScreenMapper` genérico (tropeça no login/iframes/abas Maker). **Próximo passo = CONECTAR (não reinventar):** ferramentas lêem-antes/escrevem-depois na `KnowledgeBase`, e o `orchestrator` passa a usar os blocos robustos do `makerSession`.
+
 👉 **Para o "onde paramos" detalhado, o objetivo da próxima sessão e os alvos, leia `CLAUDE.local.md`.**
 
 **Pendências de governança recorrentes:**

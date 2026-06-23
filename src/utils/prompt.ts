@@ -92,22 +92,50 @@ export function askSecret(question: string): Promise<string> {
   })
 }
 
-// ── Resolução de senha (sempre perguntar, com cache em memória) ───────────────
+// ── Resolução de senha (injetável p/ backend; prompt TTY como fallback de CLI) ─
+//
+// ESTE REPO É O BACKEND: um frontend/serviço vai dirigir o agente sem terminal.
+// Por isso a senha é resolvida em camadas, da mais "programática" p/ a interativa:
+//   1) senha já em cache (setPassword / pergunta anterior nesta sessão);
+//   2) um PROVIDER injetado pelo backend (ex.: busca de um vault/sessão do front);
+//   3) fallback CLI: pergunta no terminal (chat mascarado) — só quando há TTY.
 let cachedPassword: string | undefined
+let passwordProvider: ((userLabel: string) => string | Promise<string>) | null = null
+
+/** Backend: injeta a senha diretamente (sem prompt). Fica em cache na sessão. */
+export function setPassword(pw: string): void {
+  cachedPassword = pw
+}
 
 /**
- * Resolve a senha perguntando ao usuário no chat. Pergunta UMA vez por processo
- * (cache em memória) para que fluxos multi-passo — ex.: CRUD full — não repitam.
+ * Backend: registra um provedor de senha (ex.: ler de um cofre, da sessão do
+ * frontend, de variável de ambiente do serviço). Chamado sob demanda, 1×/processo.
+ */
+export function setPasswordProvider(fn: (userLabel: string) => string | Promise<string>): void {
+  passwordProvider = fn
+}
+
+/**
+ * Resolve a senha em camadas (cache → provider injetado → prompt TTY). Pergunta
+ * UMA vez por processo (cache em memória) para que fluxos multi-passo — ex.: CRUD
+ * full — não repitam. A senha nunca é gravada em disco/log.
  */
 export async function resolvePassword(userLabel: string): Promise<string> {
   if (cachedPassword !== undefined) return cachedPassword
+  if (passwordProvider) {
+    const pw = await passwordProvider(userLabel)
+    if (!pw) throw new Error('Provedor de senha (backend) retornou vazio.')
+    cachedPassword = pw
+    return pw
+  }
   const pw = await askSecret(`🔐 Senha de "${userLabel}": `)
   if (!pw) throw new Error('Senha vazia — não dá para autenticar.')
   cachedPassword = pw
   return pw
 }
 
-/** Limpa o segredo da memória (ex.: ao fim de uma execução). */
+/** Limpa o segredo (e o provider) da memória — ex.: ao fim de uma execução. */
 export function clearPasswordCache(): void {
   cachedPassword = undefined
+  passwordProvider = null
 }

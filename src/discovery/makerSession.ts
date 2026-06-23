@@ -70,6 +70,23 @@ export async function loginToSystem(
   return false
 }
 
+/**
+ * Garante a sessão viva SEM relogar à toa: só reloga se o campo de senha
+ * reaparecer (sessão caiu/expirou). A senha vem do cache em memória
+ * (resolvePassword) — não pergunta de novo. Use entre as fases de um teste
+ * longo (CRUD em sessão única); em sistemas lentos evita logins repetidos.
+ */
+export async function ensureLoggedIn(
+  page: Page,
+  url: string,
+  sel: { user: string[]; pass: string[]; submit: string[] }
+): Promise<boolean> {
+  const passField = await findInFrames(page, sel.pass, undefined, 600)
+  if (!passField) return true // sessão ainda viva
+  console.log('      ⚠️ sessão caiu — relogando automaticamente ...')
+  return loginToSystem(page, url, sel)
+}
+
 /** Abre a tela pelo nome do menu: expande grupos colapsados e clica no item-folha. */
 export async function openScreen(page: Page, screenName: string): Promise<boolean> {
   const want = norm(screenName)

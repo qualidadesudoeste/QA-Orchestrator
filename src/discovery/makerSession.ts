@@ -297,19 +297,57 @@ export async function goToTab(page: Page, name: string): Promise<boolean> {
 }
 
 /**
- * Reverificação DEFINITIVA pós-Create/Update: reabre a tela, garante que está
- * na aba "Localizar" (a grade — telas Maker abrem em "Cadastro"/form após criar),
- * filtra pelo token e conta as linhas que o contêm. É a prova independente de
- * que o registro está mesmo persistido na grade — não confia só no retorno
- * fraco do Maker (toast/form-limpo). Retorna quantas linhas casaram (>0 = ok).
+ * Fecha o form em edição (Maker mapeia "Cancelar (Esc)"): clica um controle de
+ * cancelar OU pressiona Esc. IMPORTANTE: enquanto o form está em edição, a aba
+ * "Localizar" nem é renderizada — só aparece depois de sair do modo edição.
+ * Evita "Sair"/"Fechar" (fecham a TELA inteira), mira só "Cancelar".
+ */
+export async function closeEditForm(page: Page): Promise<boolean> {
+  for (const frame of page.frames()) {
+    const els = await frame.locator('a[href="#!"], a[onclick], button, [role="button"], [title]').all().catch(() => [])
+    for (const e of els) {
+      if (!(await e.isVisible().catch(() => false))) continue
+      const label = ((await e.getAttribute('title').catch(() => '')) || (await e.innerText().catch(() => '')) || '').trim()
+      if (/cancelar/i.test(label)) {
+        await e.click().catch(() => {})
+        await page.waitForTimeout(900)
+        return true
+      }
+    }
+  }
+  await page.keyboard.press('Escape').catch(() => {})
+  await page.waitForTimeout(700)
+  return false
+}
+
+/**
+ * Garante que a tela está na aba "Localizar" (a grade). Se o form estiver em
+ * edição (sem a aba Localizar visível), fecha o form primeiro e tenta de novo.
+ */
+export async function ensureOnGrid(page: Page): Promise<boolean> {
+  if (await goToTab(page, 'Localizar')) return true
+  await closeEditForm(page)            // sai do modo edição → revela a aba Localizar
+  await page.waitForTimeout(800)
+  return goToTab(page, 'Localizar')
+}
+
+/**
+ * Reverificação DEFINITIVA pós-Create/Update: garante a aba "Localizar" (a
+ * grade — telas Maker ficam em "Cadastro"/form após criar, e a aba Localizar
+ * só aparece ao sair da edição), filtra pelo token e conta as linhas que o
+ * contêm. Prova independente de que o registro está mesmo persistido — não
+ * confia só no retorno fraco do Maker (toast/form-limpo). Retorna nº de linhas.
  */
 export async function reopenAndCount(page: Page, screenName: string, token: string): Promise<number> {
-  await openScreen(page, screenName).catch(() => false)
-  await page.waitForTimeout(2500)
-  // A grade vive na aba "Localizar"; depois de criar, a tela costuma estar em
-  // "Cadastro"/form. Sem isto o agente busca no lugar errado e conta 0 (falso negativo).
-  await goToTab(page, 'Localizar').catch(() => false)
-  await page.waitForTimeout(1200)
+  // 1) tenta cair na grade fechando o form se preciso (caminho do redesenho novo)
+  let onGrid = await ensureOnGrid(page).catch(() => false)
+  // 2) fallback: reabrir a tela pelo menu e tentar de novo (telas clássicas)
+  if (!onGrid) {
+    await openScreen(page, screenName).catch(() => false)
+    await page.waitForTimeout(2500)
+    onGrid = await ensureOnGrid(page).catch(() => false)
+  }
+  await page.waitForTimeout(800)
   await searchInGrid(page, token).catch(() => false)
   await page.waitForTimeout(1500)
   return countRowsWithToken(page, token)

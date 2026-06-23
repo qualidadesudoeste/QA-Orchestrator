@@ -15,6 +15,9 @@ build/
 # Playwright auth state (contains session tokens — never commit)
 playwright/.auth/
 
+# Playwright MCP runtime output (snapshots/console das sessões ao vivo)
+.playwright-mcp/
+
 # Test outputs / evidência (screenshots de telas internas — nunca commitar)
 allure-results/
 allure-report/

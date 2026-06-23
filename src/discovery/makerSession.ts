@@ -10,6 +10,7 @@
 
 import type { Browser, Frame, Page } from '@playwright/test'
 import { findInFrames, waitForAnyFrameSelector, gotoSmart } from '../tools/playwright/frameUtils'
+import { resolvePassword } from '../utils/prompt'
 import type { SystemProfile } from './systemProfile'
 
 export const INCLUDE_HINTS = /inclui|incluir|novo|nova|adicionar|cadastrar|inserir|\+/i
@@ -38,8 +39,8 @@ export async function loginToSystem(
   sel: { user: string[]; pass: string[]; submit: string[] }
 ): Promise<boolean> {
   const user = process.env.APP_USERNAME
-  const pass = process.env.APP_PASSWORD
-  if (!user || !pass) throw new Error('APP_USERNAME / APP_PASSWORD ausentes no .env')
+  if (!user) throw new Error('APP_USERNAME ausente no .env')
+  const pass = await resolvePassword(user)
 
   await gotoSmart(page, url, { timeout: 60_000 })
   await waitForAnyFrameSelector(page, [...sel.user, ...sel.pass], 45_000)
@@ -225,9 +226,14 @@ export async function detectSuccess(page: Page, token: string): Promise<boolean>
 
 /** Digita um termo na busca da Localizar e dispara (Enter + ícone de busca). */
 export async function searchInGrid(page: Page, term: string): Promise<boolean> {
+  // `:not([placeholder*="menu"])` exclui a barra "Buscar no menu" da sidebar — sem
+  // isso o agente filtrava o MENU em vez da grade e contava 0 (falso negativo).
   const searchSel = [
-    'input[placeholder*="buscar" i]', 'input[placeholder*="pesquis" i]', 'input[placeholder*="search" i]',
-    'input[aria-label*="buscar" i]', 'input[type="search"]',
+    'input[placeholder*="buscar" i]:not([placeholder*="menu" i])',
+    'input[placeholder*="pesquis" i]:not([placeholder*="menu" i])',
+    'input[placeholder*="search" i]:not([placeholder*="menu" i])',
+    'input[aria-label*="buscar" i]:not([aria-label*="menu" i])',
+    'input[type="search"]:not([placeholder*="menu" i])',
   ]
   const m = await findInFrames(page, searchSel, undefined, 800)
   if (!m) return false

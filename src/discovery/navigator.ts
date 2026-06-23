@@ -6,7 +6,8 @@
  * dashboard. Opcionalmente entra em módulos específicos pedidos por nome
  * (ex.: "grimório", "fichas"), captura o que há em cada um e salva no perfil.
  *
- * Credenciais vêm do .env (APP_USERNAME / APP_PASSWORD) — nunca hardcoded.
+ * Usuário vem do .env (APP_USERNAME); a senha é perguntada ao usuário no chat
+ * em tempo de execução (resolvePassword) — nunca hardcoded nem em arquivo.
  *
  * Uso:
  *   ts-node src/discovery/navigator.ts <url> [alvo1] [alvo2] ... [--headed]
@@ -19,6 +20,7 @@ import type { Browser, Frame, Page } from '@playwright/test'
 import path from 'path'
 import { profileStore, idFromUrl, type ModuleProfile } from './systemProfile'
 import { gotoSmart } from '../tools/playwright/frameUtils'
+import { resolvePassword } from '../utils/prompt'
 import { evidencesDir, resolveCode } from '../knowledge/layout'
 
 export interface NavItem {
@@ -56,7 +58,7 @@ export async function loginAndNavigate(
   const id = idFromUrl(url)
   const profile = profileStore.loadByUrl(url)
   const username = requiredEnv('APP_USERNAME')
-  const password = requiredEnv('APP_PASSWORD')
+  const password = await resolvePassword(username)
 
   // Seletores: do perfil aprendido, com fallback genérico.
   const userSel = profile?.login?.usernameSelectors?.length

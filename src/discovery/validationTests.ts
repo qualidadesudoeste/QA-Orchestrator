@@ -20,11 +20,27 @@ import { profileStore } from './systemProfile'
 import { resolveCode, screenshotsDir, executionDir } from '../knowledge/layout'
 import {
   selectorsFromProfile, loginToSystem, ensureLoggedIn, openScreen, ensureOnGrid,
-  clickInclude, pickFormFrame, fillForm, clickSave, detectSuccess, closeEditForm,
+  clickInclude, pickFormFrame, fillForm, clickSave, closeEditForm, dismissModal,
   reopenAndCount, searchInGrid, countRowsWithToken, clickRowAction, confirmDialog,
 } from './makerSession'
 
 interface CheckResult { name: string; passed: boolean; detail: string }
+
+/**
+ * Detecta um TOAST de sucesso de verdade — só na região de notificação, NÃO no
+ * body inteiro (senão palavras como "cadastrad/registrad" de menus/labels dão
+ * falso positivo). É a prova de que a ação realmente foi aceita/salva.
+ */
+async function sawSuccessToast(page: Page): Promise<boolean> {
+  const RE = /salvo|salvos com sucesso|com sucesso|inclus[ãa]o realizada|gravad[oa]|cadastrad[oa] com|registrad[oa] com|atualizad[oa] com/i
+  for (const frame of page.frames()) {
+    const alerts = await frame
+      .locator('[class*="toast" i],[class*="alert" i],[class*="notif" i],[class*="growl" i],[class*="snackbar" i],[role="status"],[class*="success" i],[class*="sucesso" i]')
+      .allInnerTexts().catch(() => [] as string[])
+    if (alerts.some(t => RE.test(t))) return true
+  }
+  return false
+}
 
 /** Procura indício de erro/validação na tela (texto ou marcador estrutural). */
 async function detectValidationError(page: Page): Promise<string | null> {
@@ -57,14 +73,17 @@ async function testRequired(page: Page, url: string, sel: any, screenName: strin
   await page.waitForTimeout(1800)
   await clickSave(page) // NÃO preenche nada de propósito
   await page.waitForTimeout(2500)
-  const success = await detectSuccess(page, '')
+  const toast = await sawSuccessToast(page) // só a região de toast (não o body inteiro)
   const err = await detectValidationError(page)
   await shot('valida-obrigatoriedade.png')
-  // PASS = não salvou (bloqueado). Mensagem de validação é evidência extra.
-  const passed = !success
-  const detail = success
-    ? 'FALHOU: o sistema SALVOU com campo obrigatório vazio (sem bloqueio)'
-    : (err ? `OK: bloqueou — "${err}"` : 'OK: não salvou (sem toast de sucesso); sem mensagem de validação explícita na tela')
+  await dismissModal(page).catch(() => false) // fecha eventual modal "campo obrigatório" (OK)
+  // PASS = bloqueou: há erro de validação OU não apareceu toast de sucesso real.
+  const passed = !!err || !toast
+  const detail = err
+    ? `OK: bloqueou — "${err}"`
+    : (toast
+      ? 'FALHOU: o sistema SALVOU com campo obrigatório vazio (toast de sucesso apareceu)'
+      : 'OK: não salvou (nenhum toast de sucesso; provável validação nativa do campo obrigatório)')
   await closeEditForm(page).catch(() => {})
   return { name: 'Obrigatoriedade', passed, detail }
 }
@@ -95,6 +114,8 @@ async function testDuplicate(page: Page, url: string, sel: any, screenName: stri
     await clickSave(page); await page.waitForTimeout(3000)
     const err = await detectValidationError(page)
     await shot('valida-duplicidade.png')
+    await dismissModal(page).catch(() => false) // fecha o modal "já existe" (OK) ANTES de seguir
+    await page.waitForTimeout(800)
     const after = await reopenAndCount(page, screenName, token)
     const passed = after <= 1
     const detail = passed

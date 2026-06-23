@@ -464,3 +464,34 @@ export async function confirmDialog(page: Page, timeoutMs = 7000): Promise<boole
   }
   return false
 }
+
+/**
+ * Fecha um modal informativo/de erro (ex.: "Já existe um registro" / "Campo
+ * obrigatório") clicando OK/Fechar/Entendi. Diferente de confirmDialog, é só
+ * para RECONHECER um aviso — nunca confirma uma ação destrutiva. Espera o modal
+ * renderizar (poll curto) e prioriza botões dentro de containers de modal.
+ */
+export async function dismissModal(page: Page, timeoutMs = 4000): Promise<boolean> {
+  const labels = [/^ok$/i, /^fechar$/i, /^entendi$/i, /^ciente$/i, /^continuar$/i, /^voltar$/i]
+  const scopes = ['[role="dialog"]', '[class*="modal" i]', '[class*="swal" i]', '[class*="dialog" i]', '']
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    for (const scope of scopes) {
+      for (const frame of page.frames()) {
+        const sel = scope ? `${scope} button, ${scope} a, ${scope} [role="button"]` : 'button, a[role="button"], [role="button"], input[type="button"]'
+        const els = await frame.locator(sel).all().catch(() => [])
+        for (const e of els) {
+          if (!(await e.isVisible().catch(() => false))) continue
+          const label = ((await e.innerText().catch(() => '')) || (await e.getAttribute('value').catch(() => '')) || '').trim()
+          if (label.length > 0 && label.length <= 15 && labels.some(re => re.test(label))) {
+            await e.click().catch(() => {})
+            await page.waitForTimeout(600)
+            return true
+          }
+        }
+      }
+    }
+    await page.waitForTimeout(350)
+  }
+  return false
+}

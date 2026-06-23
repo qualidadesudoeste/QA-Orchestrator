@@ -21,6 +21,7 @@
     "navigate": "ts-node src/discovery/navigator.ts",
     "register": "ts-node src/discovery/register.ts",
     "crud": "ts-node src/discovery/crud.ts",
+    "tabs": "ts-node src/discovery/tabExplorer.ts",
     "auto": "ts-node src/discovery/auto.ts",
     "testgen": "ts-node src/discovery/testGen.ts",
     "maker:inspect": "ts-node src/discovery/maker/makerInspector.ts",

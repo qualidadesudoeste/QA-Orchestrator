@@ -20,6 +20,14 @@ export const EDIT_HINTS = /editar|alterar|atualizar|modificar|edit/i
 export const DELETE_HINTS = /excluir|remover|apagar|deletar|delete/i
 export const CONFIRM_HINTS = /^sim$|confirmar|^confirma$|^ok$|excluir|remover|^apagar$/i
 
+/** Seletores de ABA (telas Maker têm Cadastro/Localizar e outras). */
+export const TAB_SELECTORS = [
+  '[role="tab"]',
+  '[class*="aba" i]',
+  '[class*="tab" i]:not([class*="table" i])',
+  'a[onclick*="aba" i]', 'a[onclick*="tab" i]', 'li[onclick*="tab" i]',
+]
+
 export function norm(s: string): string {
   return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase()
 }
@@ -243,8 +251,54 @@ export async function searchInGrid(page: Page, term: string): Promise<boolean> {
   return true
 }
 
+// ── ABAS (Cadastro/Localizar/...) — telas Maker são organizadas em abas ─────
+
+export interface TabRef { name: string; frameUrl: string }
+
+/** Lista as abas VISÍVEIS da tela (texto único), varrendo todos os frames. */
+export async function findTabs(page: Page): Promise<TabRef[]> {
+  const out: TabRef[] = []
+  const seen = new Set<string>()
+  for (const frame of page.frames()) {
+    for (const sel of TAB_SELECTORS) {
+      const els = await frame.locator(sel).all().catch(() => [])
+      for (const e of els) {
+        if (!(await e.isVisible().catch(() => false))) continue
+        const t = ((await e.innerText().catch(() => '')) || '').trim().replace(/\s+/g, ' ')
+        if (!t || t.length > 30) continue
+        const key = norm(t)
+        if (seen.has(key)) continue
+        seen.add(key)
+        out.push({ name: t, frameUrl: frame.url() })
+      }
+    }
+  }
+  return out
+}
+
+/** Clica numa aba pelo nome (prioriza match exato; varre todos os frames). */
+export async function goToTab(page: Page, name: string): Promise<boolean> {
+  const want = norm(name)
+  for (const frame of page.frames()) {
+    for (const sel of TAB_SELECTORS) {
+      const els = await frame.locator(sel).all().catch(() => [])
+      for (const e of els) {
+        if (!(await e.isVisible().catch(() => false))) continue
+        const t = norm(((await e.innerText().catch(() => '')) || '').trim())
+        if (t === want || (t.includes(want) && t.length < want.length + 12)) {
+          await e.click().catch(() => {})
+          await page.waitForTimeout(1200)
+          return true
+        }
+      }
+    }
+  }
+  return false
+}
+
 /**
- * Reverificação DEFINITIVA pós-Create/Update: reabre a tela (volta à Localizar),
+ * Reverificação DEFINITIVA pós-Create/Update: reabre a tela, garante que está
+ * na aba "Localizar" (a grade — telas Maker abrem em "Cadastro"/form após criar),
  * filtra pelo token e conta as linhas que o contêm. É a prova independente de
  * que o registro está mesmo persistido na grade — não confia só no retorno
  * fraco do Maker (toast/form-limpo). Retorna quantas linhas casaram (>0 = ok).
@@ -252,6 +306,10 @@ export async function searchInGrid(page: Page, term: string): Promise<boolean> {
 export async function reopenAndCount(page: Page, screenName: string, token: string): Promise<number> {
   await openScreen(page, screenName).catch(() => false)
   await page.waitForTimeout(2500)
+  // A grade vive na aba "Localizar"; depois de criar, a tela costuma estar em
+  // "Cadastro"/form. Sem isto o agente busca no lugar errado e conta 0 (falso negativo).
+  await goToTab(page, 'Localizar').catch(() => false)
+  await page.waitForTimeout(1200)
   await searchInGrid(page, token).catch(() => false)
   await page.waitForTimeout(1500)
   return countRowsWithToken(page, token)

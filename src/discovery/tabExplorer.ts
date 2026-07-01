@@ -20,6 +20,7 @@ import path from 'path'
 import { profileStore } from './systemProfile'
 import { resolveCode, screenDir, screenshotsDir } from '../knowledge/layout'
 import { selectorsFromProfile, loginToSystem, openScreen, findTabs, goToTab, norm } from './makerSession'
+import { record as recordScreen } from '../memory/screenKnowledge'
 
 interface TabStudy {
   index: number
@@ -133,12 +134,29 @@ export async function exploreTabs(
       console.log(`      • "${name}": ${study.fields.length} campo(s), ${study.buttons.length} botão(ões), grade=${study.hasGrid ? `sim(${study.gridRows} linhas)` : 'não'}`)
     }
 
-    // grava o conhecimento
+    // grava o conhecimento (artefato detalhado da ferramenta)
     const outFile = path.join(screenDir(code, screenName), 'tabs.json')
     fs.writeFileSync(outFile, JSON.stringify({
       code, screen: screenName, url, learnedAt: new Date().toISOString(), tabs: studies,
     }, null, 2), 'utf8')
     console.log(`\n✓ Conhecimento salvo em ${outFile}`)
+
+    // write-after: alimenta a memória de tela COMPARTILHADA, pra que outras
+    // ferramentas (register/crud/validate) reusem as abas e campos sem me consultar.
+    const richest = studies.reduce<TabStudy | null>(
+      (best, t) => (!best || t.fields.length > best.fields.length ? t : best), null)
+    recordScreen(
+      code, screenName,
+      {
+        at: new Date().toISOString(), tool: 'tabs', ok: studies.length > 0,
+        summary: `aprendeu ${studies.length} aba(s): ${studies.map(t => t.name).join(' | ')}`,
+      },
+      {
+        url,
+        tabs: studies.map(t => ({ name: t.name, hasGrid: t.hasGrid, fieldCount: t.fields.length })),
+        formFields: (richest?.fields ?? []).map(f => ({ label: f.label, type: f.type, name: f.name })),
+      }
+    )
   } finally {
     await browser?.close().catch(() => {})
   }

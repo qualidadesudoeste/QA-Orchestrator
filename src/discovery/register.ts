@@ -21,6 +21,7 @@ import {
 } from './makerSession'
 import { attachConsoleCapture } from '../tools/playwright/capture'
 import type { ConsoleCapture } from '../tools/playwright/capture'
+import { loadScreen, summarize, record as recordScreen } from '../memory/screenKnowledge'
 
 export interface RegisterResult {
   loggedIn: boolean
@@ -48,6 +49,14 @@ export async function registerRecord(
   const notes: string[] = []
   const evidence: string[] = []
   const sel = selectorsFromProfile(profile)
+
+  // read-before: reusa o que outras ferramentas já aprenderam desta tela
+  // (abas, campos, obrigatórios, sinais conhecidos) — sem depender de ninguém.
+  const known = loadScreen(code, screenName)
+  console.log(`\n[memória] ${screenName}: ${summarize(known)}`)
+  if (known?.knownIssues.length) {
+    for (const i of known.knownIssues) notes.push(`[já conhecido] ${i}`)
+  }
 
   const shot = async (name: string) => {
     const p = path.join(shotDir, name)
@@ -109,7 +118,7 @@ export async function registerRecord(
 
     // Sucesso final = sinal imediato OU prova na grade (a grade é a fonte da verdade).
     const confirmed = success || verifiedInGrid > 0
-    learn(code, screenName, { token, saved, success: confirmed, verifiedInGrid, filledFields, notes, evidence })
+    learn(code, screenName, { token, saved, success: confirmed, verifiedInGrid, filledFields, notes, evidence }, url)
     if (opts.headed) await page.waitForTimeout(8000)
     return result(true, opened, true, saved, confirmed, filledFields, verifiedInGrid)
   } finally {
@@ -122,6 +131,12 @@ export async function registerRecord(
         evidence.push(p)
         notes.push(`${errs.length} erro(s) de console/JS capturado(s) durante o fluxo (ver console-erros.json).`)
         console.log(`      ⚠️ ${errs.length} erro(s) de console/JS — salvo em console-erros.json`)
+        // memoriza o sinal pra próxima execução já avisar sozinha
+        recordScreen(
+          code, screenName,
+          { at: new Date().toISOString(), tool: 'register', ok: true, summary: `${errs.length} erro(s) de console/JS no fluxo` },
+          { knownIssues: [`Fluxo emite ${errs.length}+ erro(s) de console/JS (verificar se é ruído de infra)`] }
+        )
       }
       consoleCap?.detach()
     } catch { /* evidência é best-effort */ }
@@ -136,8 +151,20 @@ export async function registerRecord(
 function learn(
   code: string,
   screenName: string,
-  data: { token: string; saved: boolean; success: boolean; verifiedInGrid: number; filledFields: number; notes: string[]; evidence: string[] }
+  data: { token: string; saved: boolean; success: boolean; verifiedInGrid: number; filledFields: number; notes: string[]; evidence: string[] },
+  url?: string
 ): void {
+  // write-after: registra o resultado na memória de tela COMPARTILHADA, pra que
+  // a próxima ferramenta (ou a próxima execução) já saiba como esta tela se comporta.
+  recordScreen(
+    code, screenName,
+    {
+      at: new Date().toISOString(), tool: 'register', ok: data.success,
+      summary: `incluir→preencher(${data.filledFields})→salvar→grade(${data.verifiedInGrid}) ⇒ ${data.success ? 'OK' : 'revisar'}`,
+    },
+    { url, register: { success: data.success, verifiedInGrid: data.verifiedInGrid } }
+  )
+
   const dir = executionDir(code)
   const log = [
     `# Inclusão de registro — ${screenName}`, '',

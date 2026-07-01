@@ -37,6 +37,10 @@ test-results/
 systems/**/screenshots/
 systems/**/executions/
 systems/**/system_info/credentials.md
+# Memória de tela por sistema (estrutura de campos/abas/knowledge do cliente) — só local
+systems/**/screens/**/*.json
+# Dados de teste/cards de cliente largados na raiz — nunca commitar (só local)
+/cards_*.json
 
 # ── CONHECIMENTO DE CLIENTE = CONFIDENCIAL, SÓ LOCAL (nunca commitar) ──
 # Regra de negócio do cliente (tabelas, SQL, exports Maker, URLs, menus,

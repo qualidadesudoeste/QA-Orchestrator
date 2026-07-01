@@ -23,6 +23,7 @@ import {
   clickInclude, pickFormFrame, fillForm, clickSave, closeEditForm, dismissModal,
   reopenAndCount, searchInGrid, countRowsWithToken, clickRowAction, confirmDialog,
 } from './makerSession'
+import { record as recordScreen } from '../memory/screenKnowledge'
 
 interface CheckResult { name: string; passed: boolean; detail: string }
 
@@ -174,6 +175,31 @@ export async function runValidations(
 
     console.log('\n===== RESUMO =====')
     for (const r of results) console.log(`  ${r.passed ? '✓ PASSOU' : '✗ FALHOU'} | ${r.name}: ${r.detail}`)
+
+    // write-after: memoriza o comportamento de validação provado, pra que
+    // register/crud já saibam (sem me consultar) que esta tela tem essas regras.
+    const issues: string[] = []
+    for (const r of results) {
+      if (/obrigat/i.test(r.name)) {
+        issues.push(r.passed
+          ? 'Tela impõe obrigatoriedade (salvar com obrigatório vazio é barrado)'
+          : 'ATENÇÃO: salvou com campo obrigatório vazio (validação ausente?)')
+      }
+      if (/duplic/i.test(r.name)) {
+        issues.push(r.passed
+          ? 'Tela bloqueia duplicidade (registro idêntico é barrado)'
+          : 'ATENÇÃO: aceitou registro duplicado (sem bloqueio de duplicidade?)')
+      }
+    }
+    recordScreen(
+      code, screenName,
+      {
+        at: new Date().toISOString(), tool: 'validate',
+        ok: results.every(r => r.passed),
+        summary: results.map(r => `${r.name}:${r.passed ? 'OK' : 'FALHOU'}`).join(' · '),
+      },
+      { url, knownIssues: issues }
+    )
 
     // relatório
     const dir = executionDir(code)
